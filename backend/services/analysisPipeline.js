@@ -43,6 +43,11 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
   const canonical = await sharp(buffer).rotate().jpeg({ quality: 92 }).toBuffer();
   const pixels = await decodeRgba(canonical, 1200);
 
+  const geminiBuffer = await sharp(canonical)
+    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+
   console.log('[NEW IMAGE]', {
     analysisId: id,
     imageId: id,
@@ -57,7 +62,7 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
     if (hasGrok) {
       console.log('[analysisPipeline] Routing visual checking to xAI Grok provider.');
       try {
-        const result = await analyzeImageVisualsGrok(canonical, 'image/jpeg');
+        const result = await analyzeImageVisualsGrok(geminiBuffer, 'image/jpeg');
         if (result.findings && result.findings.length > 0) return result;
         console.warn('[analysisPipeline] Grok returned 0 findings.');
       } catch (err) {
@@ -66,11 +71,11 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
       // Fallback to Gemini if available
       if (hasGemini) {
         console.log('[analysisPipeline] Falling back to Gemini provider.');
-        return analyzeImageVisuals(canonical, 'image/jpeg');
+        return analyzeImageVisuals(geminiBuffer, 'image/jpeg');
       }
       return { findings: [], recommendations: [] };
     }
-    return analyzeImageVisuals(canonical, 'image/jpeg');
+    return analyzeImageVisuals(geminiBuffer, 'image/jpeg');
   };
 
   const [metadata, gemini, ocrWords, qrFindings, barcodeAll] = await Promise.all([
