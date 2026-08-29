@@ -41,7 +41,7 @@ function withTimeout(promise, ms, fallback, label) {
 export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisId }) {
   const id = analysisId || randomUUID();
   const canonical = await sharp(buffer).rotate().jpeg({ quality: 92 }).toBuffer();
-  const pixels = await decodeRgba(canonical, 1800);
+  const pixels = await decodeRgba(canonical, 1200);
 
   console.log('[NEW IMAGE]', {
     analysisId: id,

@@ -22,7 +22,7 @@ export async function extractOcrWords(encodedBuffer) {
   try {
     const prepared = await sharp(encodedBuffer)
       .rotate()
-      .resize(1400, 1400, { fit: 'inside', withoutEnlargement: true })
+      .resize(850, 850, { fit: 'inside', withoutEnlargement: true })
       .png()
       .toBuffer();
     const ocrMeta = await sharp(prepared).metadata();
