@@ -7,6 +7,36 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import scanRouter from './routes/scan.js';
 import sanitizeRouter from './routes/sanitize.js';
 
+const serverLogs = [];
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+const formatLog = (args) => {
+  return args.map((a) => {
+    if (a instanceof Error) return a.stack || a.message;
+    return typeof a === 'object' ? JSON.stringify(a) : String(a);
+  }).join(' ');
+};
+
+console.log = (...args) => {
+  serverLogs.push(`[LOG] [${new Date().toISOString()}] ${formatLog(args)}`);
+  if (serverLogs.length > 100) serverLogs.shift();
+  originalLog.apply(console, args);
+};
+
+console.warn = (...args) => {
+  serverLogs.push(`[WARN] [${new Date().toISOString()}] ${formatLog(args)}`);
+  if (serverLogs.length > 100) serverLogs.shift();
+  originalWarn.apply(console, args);
+};
+
+console.error = (...args) => {
+  serverLogs.push(`[ERROR] [${new Date().toISOString()}] ${formatLog(args)}`);
+  if (serverLogs.length > 100) serverLogs.shift();
+  originalError.apply(console, args);
+};
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -112,6 +142,7 @@ app.get('/api/health', async (req, res) => {
   res.json({
     success: true,
     message: 'ShadowScan backend is running',
+    logs: serverLogs,
     gemini: {
       configured: geminiOk,
       testStatus: geminiOk ? (geminiErr ? 'failed' : 'ok') : 'disabled',
