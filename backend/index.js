@@ -37,11 +37,11 @@ function isDevLanOrigin(origin) {
 
 function allowedOrigins() {
   const raw = process.env.ALLOWED_ORIGINS;
-  if (!raw || raw.trim() === '' || raw.trim() === '*') {
-    if (process.env.NODE_ENV === 'production') return [];
+  if (!raw || raw.trim() === '') {
+    if (process.env.NODE_ENV === 'production') return ['*'];
     return ['http://localhost:5173', 'http://localhost:5174'];
   }
-  return raw.split(',').map((origin) => origin.trim()).filter(Boolean);
+  return raw.split(',').map((origin) => origin.trim().replace(/\/$/, '')).filter(Boolean);
 }
 
 const origins = allowedOrigins();
