@@ -154,11 +154,9 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`ShadowScan backend listening on http://localhost:${PORT}`);
   if (lan) console.log(`LAN: http://${lan}:${PORT}`);
 
-  const geminiOk = isGeminiConfigured();
-  const grokOk = isGrokConfigured();
-  console.log(`Gemini mode: ${geminiOk ? 'live' : 'detectors-only'}`);
-  console.log(`Grok mode: ${grokOk ? 'live' : 'disabled'}`);
-  console.log(`Active Visual Provider: ${grokOk ? 'grok' : (geminiOk ? 'gemini' : 'none')}`);
+  const openRouterOk = isOpenRouterConfigured();
+  console.log(`OpenRouter mode: ${openRouterOk ? 'enabled' : 'disabled'}`);
+  console.log(`Active Visual Provider: ${openRouterOk ? 'openrouter' : 'none'}`);
 });
 
 
