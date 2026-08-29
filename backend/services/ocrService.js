@@ -2,23 +2,8 @@ import { createWorker } from 'tesseract.js';
 import { pixelBoxToPercent } from './imagePixels.js';
 import sharp from 'sharp';
 
-let workerPromise = null;
-let ocrQueue = Promise.resolve();
-
-async function getWorker() {
-  if (!workerPromise) {
-    workerPromise = createWorker('eng', 1, { logger: () => {} });
-  }
-  return workerPromise;
-}
-
-function runExclusive(task) {
-  const next = ocrQueue.then(task, task);
-  ocrQueue = next.catch(() => {});
-  return next;
-}
-
 export async function extractOcrWords(encodedBuffer) {
+  let worker = null;
   try {
     const prepared = await sharp(encodedBuffer)
       .rotate()
@@ -28,8 +13,11 @@ export async function extractOcrWords(encodedBuffer) {
     const ocrMeta = await sharp(prepared).metadata();
     const width = ocrMeta.width || 1;
     const height = ocrMeta.height || 1;
-    const worker = await getWorker();
-    const result = await runExclusive(() => worker.recognize(prepared));
+
+    console.log('[OCR] Initializing Tesseract worker...');
+    worker = await createWorker('eng', 1, { logger: () => {} });
+    console.log('[OCR] Running text recognition...');
+    const result = await worker.recognize(prepared);
     const words = result?.data?.words || [];
     const lines = result?.data?.lines || [];
 
@@ -52,5 +40,14 @@ export async function extractOcrWords(encodedBuffer) {
   } catch (err) {
     console.error('[OCR] failed:', err.message);
     return [];
+  } finally {
+    if (worker) {
+      console.log('[OCR] Terminating Tesseract worker to free memory...');
+      try {
+        await worker.terminate();
+      } catch (termErr) {
+        console.error('[OCR] Failed to terminate worker:', termErr.message);
+      }
+    }
   }
 }

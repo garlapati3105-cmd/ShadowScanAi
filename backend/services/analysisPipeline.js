@@ -78,11 +78,9 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
     return analyzeImageVisuals(geminiBuffer, 'image/jpeg');
   };
 
-  const [metadata, gemini, ocrWords, qrFindings, barcodeAll] = await Promise.all([
+  const [metadata, gemini, qrFindings, barcodeAll] = await Promise.all([
     Promise.resolve().then(() => extractMetadata(buffer)),
     withTimeout(getVisionService(), 90000, { findings: [], recommendations: [] }, 'vision'),
-
-    withTimeout(extractOcrWords(canonical), 60000, [], 'ocr'),
     Promise.resolve().then(() => {
       try {
         return detectQrCodes(pixels);
@@ -100,6 +98,14 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
       }
     }),
   ]);
+
+  let ocrWords = [];
+  if (!gemini || !gemini.findings || gemini.findings.length === 0) {
+    console.log('[analysisPipeline] Gemini returned 0 visual findings (or failed). Running local Tesseract OCR...');
+    ocrWords = await withTimeout(extractOcrWords(canonical), 60000, [], 'ocr');
+  } else {
+    console.log('[analysisPipeline] Gemini returned findings. Skipping local Tesseract OCR to conserve memory.');
+  }
 
   const barcodeFindings = barcodeAll.filter((item) => item.type === 'barcode');
   const qrFromZxing = barcodeAll.filter((item) => item.type === 'qr_code');
