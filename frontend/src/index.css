@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: #09090b;
+    color: #f4f4f5;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(244, 63, 94, 0.18);
+    color: #fecdd3;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(244, 63, 94, 0.55);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .ss-card {
+    border-radius: 1rem;
+    border: 1px solid rgba(39, 39, 42, 0.92);
+    background: rgba(24, 24, 27, 0.42);
+    backdrop-filter: blur(12px);
+  }
+
+  .ss-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #71717a;
+  }
+}
+
+@keyframes ss-scan {
+  0% {
+    transform: translateY(-12%);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(108%);
+    opacity: 0;
+  }
+}
+
+@keyframes ss-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ss-scan-line {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(251, 113, 133, 0.85), transparent);
+  animation: ss-scan 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.animate-fade-in {
+  animation: ss-fade-in 0.45s ease-out both;
+}
+
+.ss-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ss-scrollbar::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 999px;
+}
