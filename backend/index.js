@@ -50,6 +50,11 @@ function isGrokConfigured() {
   return Boolean(apiKey && apiKey.trim() !== '');
 }
 
+function isOpenRouterConfigured() {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  return Boolean(apiKey && apiKey.trim() !== '');
+}
+
 function lanIpv4() {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
@@ -103,8 +108,10 @@ app.use(express.urlencoded({ extended: true, limit: '32kb' }));
 app.get('/api/health', async (req, res) => {
   const geminiOk = isGeminiConfigured();
   const grokOk = isGrokConfigured();
+  const openRouterOk = isOpenRouterConfigured();
   let geminiErr = null;
   let grokErr = null;
+  let openRouterErr = null;
 
   if (geminiOk) {
     try {
@@ -142,6 +149,32 @@ app.get('/api/health', async (req, res) => {
     }
   }
 
+  if (openRouterOk) {
+    try {
+      const apiKey = process.env.OPENROUTER_API_KEY;
+      const model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
+      const testRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://shadowscanai.onrender.com',
+          'X-Title': 'ShadowScan AI'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 5
+        })
+      });
+      if (!testRes.ok) {
+        openRouterErr = `HTTP ${testRes.status}: ${await testRes.text()}`;
+      }
+    } catch (e) {
+      openRouterErr = e.message;
+    }
+  }
+
   res.json({
     success: true,
     message: 'ShadowScan backend is running',
@@ -156,7 +189,12 @@ app.get('/api/health', async (req, res) => {
       testStatus: grokOk ? (grokErr ? 'failed' : 'ok') : 'disabled',
       error: grokErr,
     },
-    activeProvider: grokOk && !grokErr ? 'grok' : (geminiOk && !geminiErr ? 'gemini' : 'none'),
+    openrouter: {
+      configured: openRouterOk,
+      testStatus: openRouterOk ? (openRouterErr ? 'failed' : 'ok') : 'disabled',
+      error: openRouterErr,
+    },
+    activeProvider: openRouterOk && !openRouterErr ? 'openrouter' : (grokOk && !grokErr ? 'grok' : (geminiOk && !geminiErr ? 'gemini' : 'none')),
   });
 });
 
