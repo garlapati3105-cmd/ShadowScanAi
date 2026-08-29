@@ -108,7 +108,10 @@ app.get('/api/health', async (req, res) => {
 
   if (geminiOk) {
     try {
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const apiKeys = (process.env.GEMINI_API_KEY || '').split(',').map((s) => s.trim()).filter((s) => s && s !== 'YOUR_GEMINI_API_KEY');
+      if (apiKeys.length === 0) throw new Error("No Gemini API keys configured");
+
+      const genAI = new GoogleGenerativeAI(apiKeys[0]);
       const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
       await model.generateContent("ping");
     } catch (e) {

@@ -158,24 +158,35 @@ async function generateWithRetry(model, payload, attempts = 2) {
   throw lastErr;
 }
 
+let currentKeyIndex = 0;
+
 export async function analyzeImageVisuals(buffer, mimeType) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY' || apiKey.trim() === '') {
+  const apiKeysRaw = process.env.GEMINI_API_KEY || '';
+  const apiKeys = apiKeysRaw.split(',').map(k => k.trim()).filter(k => k && k !== 'YOUR_GEMINI_API_KEY');
+
+  if (apiKeys.length === 0) {
+    console.warn('[GeminiService] No Gemini API keys configured.');
     return EMPTY;
   }
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+  let lastError = null;
+  for (let i = 0; i < apiKeys.length; i++) {
+    const keyIndex = (currentKeyIndex + i) % apiKeys.length;
+    const apiKey = apiKeys[keyIndex];
 
-    const response = await generateWithRetry(model, {
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { inlineData: { data: buffer.toString('base64'), mimeType } },
-            {
-              text: `Analyze this image. Identify ALL security and privacy risks present. Be thorough and image-agnostic.
+    try {
+      console.log(`[GeminiService] Attempting visual analysis with API key index ${keyIndex}...`);
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+
+      const response = await generateWithRetry(model, {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { inlineData: { data: buffer.toString('base64'), mimeType } },
+              {
+                text: `Analyze this image. Identify ALL security and privacy risks present. Be thorough and image-agnostic.
 
 Use descriptive types such as: face, person_background, institution_badge, private_chat, credentials, otp, email, phone_number, upi_id, id_number, qr_code, barcode, id_document, sensitive_document, sensitive_screen, whiteboard, location_clue, organization_identifier, vehicle_identifier, financial_information, medical_information, legal_information, calendar_information, other_sensitive.
 
@@ -200,22 +211,30 @@ Return JSON:
   }>,
   recommendations: Array<string>
 }`,
-            },
-          ],
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.1,
         },
-      ],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1,
-      },
-      systemInstruction: SYSTEM_PROMPT,
-    });
+        systemInstruction: SYSTEM_PROMPT,
+      });
 
-    const textOutput = response.response.text();
-    if (!textOutput) return EMPTY;
-    return normalizeVisualAnalysis(JSON.parse(textOutput));
-  } catch (err) {
-    console.error('[GeminiService] Visual analysis failed:', err.message);
-    return EMPTY;
+      const textOutput = response.response.text();
+      if (!textOutput) return EMPTY;
+
+      // Update index for the NEXT request to start with the next key
+      currentKeyIndex = (keyIndex + 1) % apiKeys.length;
+      return normalizeVisualAnalysis(JSON.parse(textOutput));
+    } catch (err) {
+      console.warn(`[GeminiService] API key index ${keyIndex} failed:`, err.message);
+      lastError = err;
+      // Retrying next keys is safe for all errors
+    }
   }
+
+  console.error('[GeminiService] Visual analysis failed for all available keys. Last error:', lastError?.message);
+  return EMPTY;
 }
