@@ -3,7 +3,6 @@ import os from 'os';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import scanRouter from './routes/scan.js';
 import sanitizeRouter from './routes/sanitize.js';
 
@@ -39,16 +38,6 @@ console.error = (...args) => {
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-function isGeminiConfigured() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  return Boolean(apiKey && apiKey !== 'YOUR_GEMINI_API_KEY' && apiKey.trim() !== '');
-}
-
-function isGrokConfigured() {
-  const apiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY;
-  return Boolean(apiKey && apiKey.trim() !== '');
-}
 
 function isOpenRouterConfigured() {
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -106,48 +95,8 @@ app.use(express.json({ limit: '32kb' }));
 app.use(express.urlencoded({ extended: true, limit: '32kb' }));
 
 app.get('/api/health', async (req, res) => {
-  const geminiOk = isGeminiConfigured();
-  const grokOk = isGrokConfigured();
   const openRouterOk = isOpenRouterConfigured();
-  let geminiErr = null;
-  let grokErr = null;
   let openRouterErr = null;
-
-  if (geminiOk) {
-    try {
-      const apiKeys = (process.env.GEMINI_API_KEY || '').split(',').map((s) => s.trim()).filter((s) => s && s !== 'YOUR_GEMINI_API_KEY');
-      if (apiKeys.length === 0) throw new Error("No Gemini API keys configured");
-
-      const genAI = new GoogleGenerativeAI(apiKeys[0]);
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
-      await model.generateContent("ping");
-    } catch (e) {
-      geminiErr = e.message;
-    }
-  }
-
-  if (grokOk) {
-    try {
-      const apiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY;
-      const testRes = await fetch('https://api.x.ai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: 'grok-2-1212',
-          messages: [{ role: 'user', content: 'ping' }],
-          max_tokens: 5
-        })
-      });
-      if (!testRes.ok) {
-        grokErr = `HTTP ${testRes.status}: ${await testRes.text()}`;
-      }
-    } catch (e) {
-      grokErr = e.message;
-    }
-  }
 
   if (openRouterOk) {
     try {
@@ -179,22 +128,12 @@ app.get('/api/health', async (req, res) => {
     success: true,
     message: 'ShadowScan backend is running',
     logs: serverLogs,
-    gemini: {
-      configured: geminiOk,
-      testStatus: geminiOk ? (geminiErr ? 'failed' : 'ok') : 'disabled',
-      error: geminiErr,
-    },
-    grok: {
-      configured: grokOk,
-      testStatus: grokOk ? (grokErr ? 'failed' : 'ok') : 'disabled',
-      error: grokErr,
-    },
     openrouter: {
       configured: openRouterOk,
       testStatus: openRouterOk ? (openRouterErr ? 'failed' : 'ok') : 'disabled',
       error: openRouterErr,
     },
-    activeProvider: openRouterOk && !openRouterErr ? 'openrouter' : (grokOk && !grokErr ? 'grok' : (geminiOk && !geminiErr ? 'gemini' : 'none')),
+    activeProvider: openRouterOk && !openRouterErr ? 'openrouter' : 'none',
   });
 });
 

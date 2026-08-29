@@ -1,8 +1,6 @@
 import sharp from 'sharp';
 import { randomUUID } from 'crypto';
 import { extractMetadata } from './metadataService.js';
-import { analyzeImageVisuals } from './geminiService.js';
-import { analyzeImageVisualsGrok } from './grokService.js';
 import { analyzeImageVisualsOpenRouter } from './openRouterService.js';
 import { calculateExposureScore, calculateSanitizedScore } from './riskScoringService.js';
 import { generateAttackerScenario } from './attackerSimulationService.js';
@@ -57,38 +55,8 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
   });
 
   const getVisionService = async () => {
-    const hasOpenRouter = Boolean(process.env.OPENROUTER_API_KEY);
-    const hasGrok = Boolean(process.env.XAI_API_KEY || process.env.GROK_API_KEY);
-    const hasGemini = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY' && process.env.GEMINI_API_KEY.trim() !== '');
-
-    if (hasOpenRouter) {
-      console.log('[analysisPipeline] Routing visual checking to OpenRouter provider.');
-      try {
-        const result = await analyzeImageVisualsOpenRouter(geminiBuffer, 'image/jpeg');
-        if (result.findings && result.findings.length > 0) return result;
-        console.warn('[analysisPipeline] OpenRouter returned 0 findings.');
-      } catch (err) {
-        console.error('[analysisPipeline] OpenRouter provider failed:', err.message);
-      }
-    }
-
-    if (hasGrok) {
-      console.log('[analysisPipeline] Routing visual checking to xAI Grok provider.');
-      try {
-        const result = await analyzeImageVisualsGrok(geminiBuffer, 'image/jpeg');
-        if (result.findings && result.findings.length > 0) return result;
-        console.warn('[analysisPipeline] Grok returned 0 findings.');
-      } catch (err) {
-        console.error('[analysisPipeline] Grok provider failed:', err.message);
-      }
-      // Fallback to Gemini if available
-      if (hasGemini) {
-        console.log('[analysisPipeline] Falling back to Gemini provider.');
-        return analyzeImageVisuals(geminiBuffer, 'image/jpeg');
-      }
-      return { findings: [], recommendations: [] };
-    }
-    return analyzeImageVisuals(geminiBuffer, 'image/jpeg');
+    console.log('[analysisPipeline] Routing visual checking to OpenRouter provider.');
+    return analyzeImageVisualsOpenRouter(geminiBuffer, 'image/jpeg');
   };
 
   const [metadata, gemini, qrFindings, barcodeAll] = await Promise.all([
