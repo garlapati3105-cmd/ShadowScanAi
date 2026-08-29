@@ -3,6 +3,7 @@ import os from 'os';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import scanRouter from './routes/scan.js';
 import sanitizeRouter from './routes/sanitize.js';
 
@@ -69,21 +70,59 @@ app.use(
 app.use(express.json({ limit: '32kb' }));
 app.use(express.urlencoded({ extended: true, limit: '32kb' }));
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   const geminiOk = isGeminiConfigured();
   const grokOk = isGrokConfigured();
+  let geminiErr = null;
+  let grokErr = null;
+
+  if (geminiOk) {
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      await model.generateContent("ping");
+    } catch (e) {
+      geminiErr = e.message;
+    }
+  }
+
+  if (grokOk) {
+    try {
+      const apiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY;
+      const testRes = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'grok-2-1212',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 5
+        })
+      });
+      if (!testRes.ok) {
+        grokErr = `HTTP ${testRes.status}: ${await testRes.text()}`;
+      }
+    } catch (e) {
+      grokErr = e.message;
+    }
+  }
+
   res.json({
     success: true,
     message: 'ShadowScan backend is running',
     gemini: {
       configured: geminiOk,
-      mode: geminiOk ? 'live' : 'detectors-only',
+      testStatus: geminiOk ? (geminiErr ? 'failed' : 'ok') : 'disabled',
+      error: geminiErr,
     },
     grok: {
       configured: grokOk,
-      mode: grokOk ? 'live' : 'disabled',
+      testStatus: grokOk ? (grokErr ? 'failed' : 'ok') : 'disabled',
+      error: grokErr,
     },
-    activeProvider: grokOk ? 'grok' : (geminiOk ? 'gemini' : 'none'),
+    activeProvider: grokOk && !grokErr ? 'grok' : (geminiOk && !geminiErr ? 'gemini' : 'none'),
   });
 });
 
