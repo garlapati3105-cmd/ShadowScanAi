@@ -3,6 +3,7 @@
 @theme {
   --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Instrument Serif", "Times New Roman", serif;
 }
 
 @layer base {
@@ -13,7 +14,7 @@
   body {
     margin: 0;
     min-height: 100vh;
-    background-color: #09090b;
+    background-color: #07070a;
     color: #f4f4f5;
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
@@ -21,7 +22,7 @@
   }
 
   ::selection {
-    background: rgba(244, 63, 94, 0.18);
+    background: rgba(244, 63, 94, 0.22);
     color: #fecdd3;
   }
 
@@ -32,20 +33,64 @@
 }
 
 @layer components {
+  .ss-shell {
+    position: relative;
+    isolation: isolate;
+    background:
+      radial-gradient(ellipse 90% 55% at 50% -18%, rgba(225, 29, 72, 0.16), transparent 58%),
+      radial-gradient(ellipse 45% 35% at 100% 8%, rgba(16, 185, 129, 0.07), transparent 50%),
+      radial-gradient(ellipse 40% 30% at 0% 40%, rgba(244, 63, 94, 0.05), transparent 45%),
+      #07070a;
+  }
+
+  .ss-shell::before {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 20%, #000 20%, transparent 75%);
+  }
+
   .ss-card {
-    border-radius: 1rem;
-    border: 1px solid rgba(39, 39, 42, 0.92);
-    background: rgba(24, 24, 27, 0.42);
-    backdrop-filter: blur(12px);
+    border-radius: 1.15rem;
+    border: 1px solid rgba(63, 63, 70, 0.7);
+    background: linear-gradient(180deg, rgba(39, 39, 42, 0.42) 0%, rgba(9, 9, 11, 0.72) 100%);
+    backdrop-filter: blur(16px);
   }
 
   .ss-label {
     font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 500;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: #71717a;
+    color: #a1a1aa;
+  }
+
+  .ss-display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.03em;
+  }
+
+  .ss-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 999px;
+    border: 1px solid rgba(244, 63, 94, 0.28);
+    background: rgba(244, 63, 94, 0.08);
+    padding: 0.35rem 0.8rem;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #fda4af;
   }
 }
 
@@ -77,14 +122,134 @@
   }
 }
 
+@keyframes ss-pulse-dot {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes ss-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ss-sweep {
+  0% {
+    transform: rotate(0deg);
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: rotate(360deg);
+    opacity: 0.15;
+  }
+}
+
 .ss-scan-line {
   position: absolute;
-  left: 6%;
-  right: 6%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(251, 113, 133, 0.85), transparent);
-  animation: ss-scan 1.8s ease-in-out infinite;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(251, 113, 133, 0.15), rgba(255, 255, 255, 0.95), rgba(251, 113, 133, 0.15), transparent);
+  box-shadow: 0 0 24px 4px rgba(244, 63, 94, 0.45);
+  animation: ss-scan 2.2s ease-in-out infinite;
   pointer-events: none;
+  z-index: 3;
+}
+
+.ss-scan-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image:
+    linear-gradient(rgba(251, 113, 133, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(251, 113, 133, 0.09) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 78%);
+}
+
+.ss-radar {
+  position: absolute;
+  inset: 18%;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 113, 133, 0.22);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ss-radar::before,
+.ss-radar::after {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 113, 133, 0.18);
+}
+
+.ss-radar::after {
+  inset: 36%;
+  animation: ss-orbit 8s linear infinite;
+  border-style: dashed;
+}
+
+.ss-radar-beam {
+  position: absolute;
+  inset: 18%;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 2;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(244, 63, 94, 0.28) 40deg, transparent 70deg);
+  animation: ss-sweep 3.4s linear infinite;
+  mask-image: radial-gradient(circle at center, transparent 38%, #000 39%);
+}
+
+.ss-hud-corner {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  z-index: 4;
+  border-color: rgba(251, 113, 133, 0.85);
+  border-style: solid;
+}
+
+.ss-hud-tl {
+  top: 12px;
+  left: 12px;
+  border-width: 2px 0 0 2px;
+}
+
+.ss-hud-tr {
+  top: 12px;
+  right: 12px;
+  border-width: 2px 2px 0 0;
+}
+
+.ss-hud-bl {
+  bottom: 12px;
+  left: 12px;
+  border-width: 0 0 2px 2px;
+}
+
+.ss-hud-br {
+  bottom: 12px;
+  right: 12px;
+  border-width: 0 2px 2px 0;
+}
+
+.ss-live-dot {
+  height: 0.4rem;
+  width: 0.4rem;
+  border-radius: 999px;
+  background: #34d399;
+  animation: ss-pulse-dot 1.8s ease-in-out infinite;
 }
 
 .animate-fade-in {

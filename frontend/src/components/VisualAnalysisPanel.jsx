@@ -128,7 +128,7 @@ export default function VisualAnalysisPanel({
 
   if (compact) {
     return (
-      <div className="ss-card relative flex min-h-[280px] items-center justify-center overflow-hidden p-2 sm:min-h-[350px]">
+      <div className="ss-card relative flex min-h-[300px] items-center justify-center overflow-hidden p-3 sm:min-h-[380px]">
         {previewUrl ? (
           markedImage
         ) : (

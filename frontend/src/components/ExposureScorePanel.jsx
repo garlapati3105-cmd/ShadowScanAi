@@ -89,7 +89,7 @@ export default function ExposureScorePanel({ exposureScore }) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className={`ss-card flex flex-col items-center gap-7 p-5 sm:p-6 md:flex-row ${theme.border}`}
+      className={`ss-card flex flex-col items-center gap-8 p-6 sm:p-8 md:flex-row ${theme.border}`}
     >
       <div className="relative flex h-36 w-36 shrink-0 items-center justify-center sm:h-40 sm:w-40">
         <svg className="h-full w-full -rotate-90" viewBox="0 0 160 160">
@@ -109,7 +109,7 @@ export default function ExposureScorePanel({ exposureScore }) {
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="ss-label">Exposure</span>
-          <h2 className="mt-0.5 font-mono text-4xl font-semibold tracking-tight text-white">
+          <h2 className="mt-0.5 font-mono text-5xl font-semibold tracking-tight text-white">
             <AnimatedScoreValue value={overall} />
           </h2>
           <span className="mt-0.5 border-t border-zinc-800 pt-0.5 font-mono text-[10px] text-zinc-500">
@@ -120,9 +120,9 @@ export default function ExposureScorePanel({ exposureScore }) {
 
       <div className="w-full flex-1 space-y-4">
         <div>
-          <span className="ss-label">Digital exposure assessment</span>
-          <div className="mt-1 flex items-center gap-2">
-            <h3 className={`text-lg font-semibold tracking-tight ${theme.text}`}>{theme.label}</h3>
+          <span className="ss-label">Exposure index</span>
+          <div className="mt-1.5 flex items-center gap-2">
+            <h3 className={`ss-display text-[1.85rem] leading-none tracking-tight ${theme.text}`}>{theme.label}</h3>
             {overall >= 50 && (
               <span className={`inline-flex rounded-md border p-1 ${theme.border} text-red-400`}>
                 <ShieldAlert className="h-3.5 w-3.5" />

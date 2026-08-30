@@ -78,35 +78,51 @@ export default function SafeComparisonPanel({
       animate={{ opacity: 1, y: 0 }}
       className="ss-card overflow-hidden"
     >
-      <div className="border-b border-zinc-800 bg-zinc-950/30 px-5 py-5 sm:px-6">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-white">
-          <ShieldCheck className="h-5 w-5 text-emerald-400" />
-          Safe image
-        </h2>
-        <p className="mt-1 text-xs text-zinc-400">
-          Local blur/pixelation on verified sensitive regions only. Faces, hands, and backgrounds stay clear.
+      <div className="border-b border-white/8 bg-emerald-500/[0.05] px-5 py-6 sm:px-6">
+        <p className="ss-label !text-emerald-400/90 flex items-center gap-2">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Layer 04
+        </p>
+        <h2 className="ss-display mt-1 text-[1.85rem] text-white">Safe image</h2>
+        <p className="mt-1.5 max-w-xl text-sm text-zinc-400">
+          Secrets are pixelated locally. Faces stay clear. A second vision pass checks leftover readable text.
         </p>
       </div>
 
       <div className="space-y-6 p-5 sm:p-6">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+          <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4">
             <span className="ss-label">Risk shift</span>
             <div className="mt-2 flex flex-wrap items-baseline gap-2">
-              <span className="font-mono text-2xl font-semibold text-red-400">{beforeScore}</span>
+              <span className="font-mono text-3xl font-semibold text-red-400">{beforeScore}</span>
               <span className="text-xs text-zinc-500">→</span>
-              <span className="font-mono text-2xl font-semibold text-emerald-400">{afterScore}</span>
+              <span className="font-mono text-3xl font-semibold text-emerald-400">{afterScore}</span>
             </div>
           </div>
-          <div className="flex flex-col justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 md:col-span-2">
+          <div className="flex flex-col justify-center gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] p-4 md:col-span-2">
             <span className="ss-label">Validation</span>
-            <div className="flex flex-wrap gap-2 font-mono text-[11px] text-zinc-400">
-              <span>QR {validation?.qr || 'n/a'}</span>
-              <span>Barcode {validation?.barcode || 'n/a'}</span>
-              <span>Text {validation?.sensitiveText || 'n/a'}</span>
-              <span>Blur recheck {validation?.visualResidual || 'n/a'}</span>
-              <span className="inline-flex items-center gap-1 text-emerald-400">
-                <EyeOff className="h-3.5 w-3.5" /> {findings.length} protected
+            <div className="flex flex-wrap gap-2">
+              {[
+                ['QR', validation?.qr],
+                ['Barcode', validation?.barcode],
+                ['Text', validation?.sensitiveText],
+                ['Blur recheck', validation?.visualResidual],
+              ].map(([label, value]) => (
+                <span
+                  key={label}
+                  className={`rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wide ${
+                    value === 'PASS' || value === 'PROTECTED'
+                      ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+                      : value === 'FAIL'
+                        ? 'border-red-500/25 bg-red-500/10 text-red-300'
+                        : 'border-white/10 text-zinc-500'
+                  }`}
+                >
+                  {label} {value || 'n/a'}
+                </span>
+              ))}
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 font-mono text-[10px] uppercase text-zinc-400">
+                <EyeOff className="h-3.5 w-3.5 text-emerald-400" /> {findings.length} protected
               </span>
             </div>
           </div>
@@ -146,7 +162,7 @@ export default function SafeComparisonPanel({
           <button
             onClick={handleDownload}
             disabled={!analysisId}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40"
           >
             <Download className="h-4 w-4" />
             Download safe image
@@ -154,7 +170,7 @@ export default function SafeComparisonPanel({
           <button
             onClick={handleRegenerate}
             disabled={isProcessing || !originalFile}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-5 py-2.5 text-sm text-zinc-200 hover:border-zinc-500 disabled:opacity-40"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/[0.04] px-5 py-3 text-sm text-zinc-200 hover:border-white/25 disabled:opacity-40"
           >
             {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Regenerate protection
