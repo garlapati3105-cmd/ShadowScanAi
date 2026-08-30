@@ -87,13 +87,14 @@ export default function VisualAnalysisPanel({
   hoveredId = null,
   setHoveredId = () => {},
 }) {
+  const [localHoveredId, setLocalHoveredId] = useState(null);
+
   if (!visualAnalysis) return null;
 
   const recommendations = visualAnalysis.recommendations || [];
   const findings = (visualAnalysis.findings || []).filter(
     (item) => !item.analysisId || !analysisId || item.analysisId === analysisId
   );
-  const [localHoveredId, setLocalHoveredId] = useState(null);
 
   const currentHoveredId = hoveredId ?? localHoveredId;
   const changeHoveredId = (val) => {

@@ -106,7 +106,7 @@ ShadowScan AI/
    ```
 4. Set the backend endpoint URL in `.env`:
    ```env
-   VITE_API_BASE_URL=http://localhost:5000
+   VITE_API_BASE_URL=http://localhost:5000/api
    ```
 5. Spin up the Vite development server:
    ```bash
@@ -120,15 +120,16 @@ ShadowScan AI/
 
 ### Frontend (Vercel)
 Assign your environment variables in the Vercel dashboard:
-*   `VITE_API_BASE_URL`: Point this to your Render production URL (e.g. `https://shadowscanai.onrender.com`).
+*   `VITE_API_BASE_URL`: Point this to your Render production API, including `/api` (e.g. `https://shadowscanai.onrender.com/api`).
 
 ### Backend (Render Web Service)
 Ensure the following configurations are added under the Render Environment tab:
 *   **Build Command**: `npm install`
 *   **Start Command**: `node index.js`
 *   **Environment Variables**:
-    *   `OPENROUTER_API_KEY`: *Your valid OpenRouter credential key*
+    *   `OPENROUTER_API_KEY`: *Your valid OpenRouter credential key* (optional if `GEMINI_API_KEY` is set)
     *   `OPENROUTER_MODEL`: `google/gemini-2.5-flash`
+    *   `GEMINI_API_KEY`: *Fallback Google AI Studio key when OpenRouter is not configured*
     *   `ALLOWED_ORIGINS`: Set to your production Vercel URL (e.g., `https://shadow-scan-ai.vercel.app`)
 
 ---

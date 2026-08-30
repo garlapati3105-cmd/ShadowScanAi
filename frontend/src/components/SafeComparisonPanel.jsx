@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ShieldCheck,
@@ -28,13 +28,6 @@ export default function SafeComparisonPanel({
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [downloadError, setDownloadError] = useState('');
-
-  useEffect(() => {
-    setLocalSafe(safeImage || null);
-    setLocalAfter(sanitizedScore || null);
-    setErrorMessage('');
-    setDownloadError('');
-  }, [analysisId, safeImage, sanitizedScore]);
 
   const handleRegenerate = async () => {
     if (!originalFile) return;

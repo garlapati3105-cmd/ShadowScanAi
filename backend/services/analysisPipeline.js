@@ -2,6 +2,9 @@ import sharp from 'sharp';
 import { randomUUID } from 'crypto';
 import { extractMetadata } from './metadataService.js';
 import { analyzeImageVisualsOpenRouter } from './openRouterService.js';
+import { analyzeImageVisuals } from './geminiService.js';
+import { analyzeImageVisualsGrok } from './grokService.js';
+import { resolveVisionProvider } from '../lib/visionProvider.js';
 import { calculateExposureScore, calculateSanitizedScore } from './riskScoringService.js';
 import { generateAttackerScenario } from './attackerSimulationService.js';
 import { decodeRgba } from './imagePixels.js';
@@ -55,8 +58,24 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
   });
 
   const getVisionService = async () => {
-    console.log('[analysisPipeline] Routing visual checking to OpenRouter provider.');
-    return analyzeImageVisualsOpenRouter(geminiBuffer, 'image/jpeg');
+    const provider = resolveVisionProvider();
+    console.log(`[analysisPipeline] Routing visual checking to ${provider} provider.`);
+    if (provider === 'openrouter') {
+      const result = await analyzeImageVisualsOpenRouter(geminiBuffer, 'image/jpeg');
+      if (result?.findings?.length) return result;
+      console.warn('[analysisPipeline] OpenRouter returned no findings. Trying Gemini fallback.');
+      const geminiResult = await analyzeImageVisuals(geminiBuffer, 'image/jpeg');
+      if (geminiResult?.findings?.length) return geminiResult;
+      return analyzeImageVisualsGrok(geminiBuffer, 'image/jpeg');
+    }
+    if (provider === 'gemini') {
+      return analyzeImageVisuals(geminiBuffer, 'image/jpeg');
+    }
+    if (provider === 'grok') {
+      return analyzeImageVisualsGrok(geminiBuffer, 'image/jpeg');
+    }
+    console.warn('[analysisPipeline] No visual AI provider configured.');
+    return { findings: [], recommendations: [] };
   };
 
   const [metadata, gemini, qrFindings, barcodeAll] = await Promise.all([
@@ -155,6 +174,7 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
     sanitizedScore: afterScore.scores,
     safeImage: sanitized.dataUrl,
     safeBuffer: sanitized.buffer,
+    safeMimeType: 'image/jpeg',
     orientedPreview,
     validation: sanitized.validation,
     attackerSimulation,

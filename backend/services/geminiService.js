@@ -177,7 +177,8 @@ export async function analyzeImageVisuals(buffer, mimeType) {
     try {
       console.log(`[GeminiService] Attempting visual analysis with API key index ${keyIndex}...`);
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+      const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+      const model = genAI.getGenerativeModel({ model: modelName });
 
       const response = await generateWithRetry(model, {
         contents: [

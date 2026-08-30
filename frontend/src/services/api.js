@@ -1,7 +1,11 @@
 import axios from 'axios';
 
 function resolveApiBase() {
-  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
+  const raw = import.meta.env.VITE_API_BASE_URL;
+  if (raw) {
+    const trimmed = String(raw).trim().replace(/\/$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  }
   const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
   return `http://${host}:5000/api`;
 }

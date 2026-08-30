@@ -1,9 +1,11 @@
-const MAX_ENTRIES = 8;
+const MAX_ENTRIES = 32;
 const store = new Map();
 
 export function putSafeImage(analysisId, payload) {
   if (!analysisId || !payload?.buffer) return;
-  if (store.size >= MAX_ENTRIES) {
+  if (store.has(analysisId)) {
+    store.delete(analysisId);
+  } else if (store.size >= MAX_ENTRIES) {
     const oldest = store.keys().next().value;
     store.delete(oldest);
   }

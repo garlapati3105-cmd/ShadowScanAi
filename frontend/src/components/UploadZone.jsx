@@ -23,10 +23,11 @@ function formatBytes(bytes) {
 }
 
 function validateFile(file) {
-  if (!ACCEPTED_TYPES.includes(file.type)) {
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  const typeOk = !file.type || ACCEPTED_TYPES.includes(file.type);
+  if (!typeOk) {
     return 'Only JPG, JPEG, and PNG files are supported.';
   }
-  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
   if (!ACCEPTED_EXTENSIONS.includes(ext)) {
     return 'File extension is not permitted.';
   }
@@ -36,7 +37,7 @@ function validateFile(file) {
   return null;
 }
 
-export default function UploadZone({ onAnalysisStart, onResult }) {
+export default function UploadZone({ onAnalysisStart, onResult, onAnalysisError }) {
   const inputRef = useRef(null);
   const analysisIdRef = useRef(null);
   const abortRef = useRef(null);
@@ -59,7 +60,6 @@ export default function UploadZone({ onAnalysisStart, onResult }) {
   React.useEffect(() => {
     let interval;
     if (uiState === 'uploading') {
-      setActiveStep(0);
       interval = setInterval(() => {
         setActiveStep((prev) => (prev < 4 ? prev + 1 : prev));
       }, 1400);
@@ -79,6 +79,7 @@ export default function UploadZone({ onAnalysisStart, onResult }) {
       analysisIdRef.current = analysisId;
       setResult(null);
       setErrorMsg('');
+      setActiveStep(0);
       setUiState('uploading');
 
       if (onAnalysisStart) {
@@ -122,9 +123,10 @@ export default function UploadZone({ onAnalysisStart, onResult }) {
           'Upload failed. Please try again.';
         setErrorMsg(msg);
         setUiState('error');
+        if (onAnalysisError) onAnalysisError(analysisId);
       }
     },
-    [onAnalysisStart, onResult]
+    [onAnalysisStart, onResult, onAnalysisError]
   );
 
   const applyFile = useCallback(

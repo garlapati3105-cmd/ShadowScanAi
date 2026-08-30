@@ -53,7 +53,7 @@ router.post('/scan', (req, res, next) => {
 
       putSafeImage(result.analysisId, {
         buffer: result.safeBuffer,
-        mimeType,
+        mimeType: result.safeMimeType || 'image/jpeg',
         findings: result.findings,
       });
 

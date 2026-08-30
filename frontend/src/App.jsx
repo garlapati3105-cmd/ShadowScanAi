@@ -48,6 +48,12 @@ export default function App() {
     });
   }, []);
 
+  const handleAnalysisError = useCallback((analysisId) => {
+    if (analysisId && analysisId !== currentIdRef.current) return;
+    setHoveredId(null);
+    setCurrentAnalysis((prev) => (prev?.status === 'analyzing' ? null : prev));
+  }, []);
+
   const handleResult = useCallback((data) => {
     if (data == null) {
       currentIdRef.current = null;
@@ -219,7 +225,11 @@ export default function App() {
             transition={{ duration: 0.35 }}
             className={currentAnalysis ? 'mx-auto w-full max-w-2xl' : ''}
           >
-            <UploadZone onAnalysisStart={handleAnalysisStart} onResult={handleResult} />
+            <UploadZone
+              onAnalysisStart={handleAnalysisStart}
+              onResult={handleResult}
+              onAnalysisError={handleAnalysisError}
+            />
           </motion.div>
 
           {isAnalyzing && (
@@ -230,7 +240,7 @@ export default function App() {
           )}
 
           <AnimatePresence>
-            {scanResult && scanResult.analysisId === currentIdRef.current && (
+            {scanResult && (
               <motion.div
                 key={scanResult.analysisId}
                 initial={{ opacity: 0, y: 20 }}
@@ -366,6 +376,7 @@ export default function App() {
                 )}
 
                 <SafeComparisonPanel
+                  key={scanResult.analysisId}
                   analysisId={scanResult.analysisId}
                   originalFile={scanResult.originalFile}
                   previewUrl={scanResult.previewUrl}

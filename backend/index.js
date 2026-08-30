@@ -5,6 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import scanRouter from './routes/scan.js';
 import sanitizeRouter from './routes/sanitize.js';
+import { isGeminiConfigured, isOpenRouterConfigured, resolveVisionProvider } from './lib/visionProvider.js';
 
 const serverLogs = [];
 const originalLog = console.log;
@@ -39,11 +40,6 @@ console.error = (...args) => {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-function isOpenRouterConfigured() {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  return Boolean(apiKey && apiKey.trim() !== '');
-}
-
 function lanIpv4() {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
@@ -63,7 +59,6 @@ function isDevLanOrigin(origin) {
 function allowedOrigins() {
   const raw = process.env.ALLOWED_ORIGINS;
   if (!raw || raw.trim() === '') {
-    if (process.env.NODE_ENV === 'production') return ['*'];
     return ['http://localhost:5173', 'http://localhost:5174'];
   }
   return raw.split(',').map((origin) => origin.trim().replace(/\/$/, '')).filter(Boolean);
@@ -80,6 +75,7 @@ app.use(
   cors({
     origin(origin, callback) {
       if (!origin) return callback(null, true);
+      if (origins.includes('*')) return callback(null, true);
       if (origins.includes(origin)) return callback(null, true);
       if (process.env.NODE_ENV !== 'production' && isDevLanOrigin(origin)) {
         return callback(null, true);
@@ -96,6 +92,8 @@ app.use(express.urlencoded({ extended: true, limit: '32kb' }));
 
 app.get('/api/health', async (req, res) => {
   const openRouterOk = isOpenRouterConfigured();
+  const geminiOk = isGeminiConfigured();
+  const activeProvider = resolveVisionProvider();
   let openRouterErr = null;
 
   if (openRouterOk) {
@@ -133,7 +131,10 @@ app.get('/api/health', async (req, res) => {
       testStatus: openRouterOk ? (openRouterErr ? 'failed' : 'ok') : 'disabled',
       error: openRouterErr,
     },
-    activeProvider: openRouterOk && !openRouterErr ? 'openrouter' : 'none',
+    gemini: {
+      configured: geminiOk,
+    },
+    activeProvider,
   });
 });
 
@@ -154,9 +155,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`ShadowScan backend listening on http://localhost:${PORT}`);
   if (lan) console.log(`LAN: http://${lan}:${PORT}`);
 
-  const openRouterOk = isOpenRouterConfigured();
-  console.log(`OpenRouter mode: ${openRouterOk ? 'enabled' : 'disabled'}`);
-  console.log(`Active Visual Provider: ${openRouterOk ? 'openrouter' : 'none'}`);
+  const provider = resolveVisionProvider();
+  console.log(`OpenRouter mode: ${isOpenRouterConfigured() ? 'enabled' : 'disabled'}`);
+  console.log(`Gemini mode: ${isGeminiConfigured() ? 'enabled' : 'disabled'}`);
+  console.log(`Active Visual Provider: ${provider}`);
 });
 
 
