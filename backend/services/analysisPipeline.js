@@ -57,22 +57,22 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
     size: `${pixels.originalWidth}x${pixels.originalHeight}`,
   });
 
-  const getVisionService = async () => {
+  const runVision = async (imageBuffer, mode = 'detect') => {
     const provider = resolveVisionProvider();
-    console.log(`[analysisPipeline] Routing visual checking to ${provider} provider.`);
+    console.log(`[analysisPipeline] Routing visual ${mode} to ${provider} provider.`);
     if (provider === 'openrouter') {
-      const result = await analyzeImageVisualsOpenRouter(geminiBuffer, 'image/jpeg');
-      if (result?.findings?.length) return result;
+      const result = await analyzeImageVisualsOpenRouter(imageBuffer, 'image/jpeg', { mode });
+      if (mode === 'verify' || result?.findings?.length) return result;
       console.warn('[analysisPipeline] OpenRouter returned no findings. Trying Gemini fallback.');
-      const geminiResult = await analyzeImageVisuals(geminiBuffer, 'image/jpeg');
+      const geminiResult = await analyzeImageVisuals(imageBuffer, 'image/jpeg', { mode });
       if (geminiResult?.findings?.length) return geminiResult;
-      return analyzeImageVisualsGrok(geminiBuffer, 'image/jpeg');
+      return analyzeImageVisualsGrok(imageBuffer, 'image/jpeg');
     }
     if (provider === 'gemini') {
-      return analyzeImageVisuals(geminiBuffer, 'image/jpeg');
+      return analyzeImageVisuals(imageBuffer, 'image/jpeg', { mode });
     }
     if (provider === 'grok') {
-      return analyzeImageVisualsGrok(geminiBuffer, 'image/jpeg');
+      return analyzeImageVisualsGrok(imageBuffer, 'image/jpeg');
     }
     console.warn('[analysisPipeline] No visual AI provider configured.');
     return { findings: [], recommendations: [] };
@@ -80,7 +80,7 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
 
   const [metadata, gemini, qrFindings, barcodeAll] = await Promise.all([
     Promise.resolve().then(() => extractMetadata(buffer)),
-    withTimeout(getVisionService(), 90000, { findings: [], recommendations: [] }, 'vision'),
+    withTimeout(runVision(geminiBuffer, 'detect'), 90000, { findings: [], recommendations: [] }, 'vision'),
     Promise.resolve().then(() => {
       try {
         return detectQrCodes(pixels);
@@ -148,6 +148,26 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
   const sanitized = await sanitizeVerifiedRegions(canonical, findings, 'image/jpeg');
   const afterScore = calculateSanitizedScore(metadata, visualAnalysis, findings.map((_, idx) => idx));
   const attackerSimulation = generateAttackerScenario(metadata, visualAnalysis);
+
+  const verifyBuffer = await sharp(sanitized.buffer)
+    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+  const residualVision = await withTimeout(
+    runVision(verifyBuffer, 'verify'),
+    60000,
+    { findings: [], recommendations: [] },
+    'vision-verify'
+  );
+  const residualSensitive = (residualVision.findings || []).filter((item) => {
+    const type = String(item.type || '').toLowerCase();
+    return !['face', 'person', 'person_background', 'human_face', 'human'].includes(type);
+  });
+  const validation = {
+    ...sanitized.validation,
+    visualResidual: residualSensitive.length === 0 ? 'PASS' : 'FAIL',
+  };
+
   const orientedPreview = `data:image/jpeg;base64,${(
     await sharp(canonical).resize(1400, 1400, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer()
   ).toString('base64')}`;
@@ -162,7 +182,7 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
       status: 'protected',
     });
   });
-  console.log('[VALIDATION]', { analysisId: id, ...sanitized.validation });
+  console.log('[VALIDATION]', { analysisId: id, ...validation, residual: residualSensitive.length });
 
   return {
     analysisId: id,
@@ -176,7 +196,7 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
     safeBuffer: sanitized.buffer,
     safeMimeType: 'image/jpeg',
     orientedPreview,
-    validation: sanitized.validation,
+    validation,
     attackerSimulation,
   };
 }

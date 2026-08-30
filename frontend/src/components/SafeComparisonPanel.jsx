@@ -104,6 +104,7 @@ export default function SafeComparisonPanel({
               <span>QR {validation?.qr || 'n/a'}</span>
               <span>Barcode {validation?.barcode || 'n/a'}</span>
               <span>Text {validation?.sensitiveText || 'n/a'}</span>
+              <span>Blur recheck {validation?.visualResidual || 'n/a'}</span>
               <span className="inline-flex items-center gap-1 text-emerald-400">
                 <EyeOff className="h-3.5 w-3.5" /> {findings.length} protected
               </span>
