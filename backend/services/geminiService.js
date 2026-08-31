@@ -73,58 +73,69 @@ async function generateWithRetry(model, payload, attempts = 2) {
 
 let currentKeyIndex = 0;
 
+function geminiModelCandidates() {
+  const preferred = String(process.env.GEMINI_MODEL || '').trim();
+  return [...new Set([
+    preferred,
+    'gemini-3.6-flash',
+    'gemini-2.0-flash',
+    'gemini-flash-latest',
+    'gemini-2.5-flash',
+  ].filter(Boolean))];
+}
+
 export async function analyzeImageVisuals(buffer, mimeType, { mode = 'detect' } = {}) {
   const apiKeysRaw = process.env.GEMINI_API_KEY || '';
   const apiKeys = apiKeysRaw.split(',').map(k => k.trim()).filter(k => k && k !== 'YOUR_GEMINI_API_KEY');
 
   if (apiKeys.length === 0) {
     console.warn('[GeminiService] No Gemini API keys configured.');
-    return EMPTY;
+    return { ...EMPTY, error: 'Gemini is not configured.' };
   }
 
+  const models = geminiModelCandidates();
   let lastError = null;
   for (let i = 0; i < apiKeys.length; i++) {
     const keyIndex = (currentKeyIndex + i) % apiKeys.length;
     const apiKey = apiKeys[keyIndex];
+    const genAI = new GoogleGenerativeAI(apiKey);
 
-    try {
-      console.log(`[GeminiService] Attempting visual analysis with API key index ${keyIndex}...`);
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-      const model = genAI.getGenerativeModel({ model: modelName });
+    for (const modelName of models) {
+      try {
+        console.log(`[GeminiService] Attempting visual analysis with API key index ${keyIndex} model ${modelName}...`);
+        const model = genAI.getGenerativeModel({ model: modelName });
 
-      const response = await generateWithRetry(model, {
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { inlineData: { data: buffer.toString('base64'), mimeType } },
-              {
-                text: visionUserPrompt(mode),
-              },
-            ],
+        const response = await generateWithRetry(model, {
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { inlineData: { data: buffer.toString('base64'), mimeType } },
+                {
+                  text: visionUserPrompt(mode),
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
           },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-        systemInstruction: SYSTEM_PROMPT,
-      });
+          systemInstruction: SYSTEM_PROMPT,
+        });
 
-      const textOutput = response.response.text();
-      if (!textOutput) return EMPTY;
+        const textOutput = response.response.text();
+        if (!textOutput) return { ...EMPTY, error: 'Gemini returned an empty response.' };
 
-      // Update index for the NEXT request to start with the next key
-      currentKeyIndex = (keyIndex + 1) % apiKeys.length;
-      return normalizeVisualAnalysis(JSON.parse(textOutput));
-    } catch (err) {
-      console.warn(`[GeminiService] API key index ${keyIndex} failed:`, err.message);
-      lastError = err;
-      // Retrying next keys is safe for all errors
+        currentKeyIndex = (keyIndex + 1) % apiKeys.length;
+        return normalizeVisualAnalysis(JSON.parse(textOutput));
+      } catch (err) {
+        console.warn(`[GeminiService] API key index ${keyIndex} model ${modelName} failed:`, err.message);
+        lastError = err;
+      }
     }
   }
 
   console.error('[GeminiService] Visual analysis failed for all available keys. Last error:', lastError?.message);
-  return EMPTY;
+  return { ...EMPTY, error: lastError?.message || 'Gemini visual analysis failed.' };
 }

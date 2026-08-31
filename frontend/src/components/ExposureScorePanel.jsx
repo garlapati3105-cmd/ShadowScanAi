@@ -77,11 +77,19 @@ function CategoryBar({ icon: Icon, label, value, delay }) {
   );
 }
 
-export default function ExposureScorePanel({ exposureScore }) {
+export default function ExposureScorePanel({ exposureScore, analysisIncomplete = false }) {
   if (!exposureScore) return null;
 
   const { overall = 0, identity = 0, location = 0, sensitiveData = 0 } = exposureScore;
-  const theme = getRiskTheme(overall);
+  const theme = analysisIncomplete
+    ? {
+        text: 'text-amber-400',
+        border: 'border-amber-500/25',
+        stroke: 'stroke-amber-400',
+        bar: 'bg-amber-400',
+        label: 'Scan incomplete',
+      }
+    : getRiskTheme(overall);
   const circumference = 2 * Math.PI * 68;
 
   return (

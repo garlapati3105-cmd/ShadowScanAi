@@ -94,6 +94,7 @@ router.post('/scan', (req, res, next) => {
         orientedPreview: result.orientedPreview,
         validation: result.validation,
         attackerSimulation: result.attackerSimulation,
+        visionError: result.visionError || null,
       });
     } catch (scanErr) {
       console.error('[Scan Error]', scanErr.message);

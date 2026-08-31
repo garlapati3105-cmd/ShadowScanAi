@@ -290,7 +290,16 @@ export default function App() {
                 transition={{ duration: 0.4, ease: 'easeOut' }}
                 className="space-y-10"
               >
-                <ExposureScorePanel exposureScore={scanResult.exposureScore} />
+                {scanResult.visionError && findings.length === 0 && (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm leading-relaxed text-amber-100">
+                    Visual AI could not finish this scan, so the exposure score is not a real all-clear.
+                    Add OpenRouter credits or a working Gemini model, then scan again.
+                  </div>
+                )}
+                <ExposureScorePanel
+                  exposureScore={scanResult.exposureScore}
+                  analysisIncomplete={Boolean(scanResult.visionError) && findings.length === 0}
+                />
 
                 <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12 lg:gap-8">
                   <div className="space-y-4 lg:col-span-7">
@@ -322,9 +331,13 @@ export default function App() {
                       <div className="space-y-2.5">
                         {findings.length === 0 ? (
                           <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-5 py-10 text-center">
-                            <p className="ss-display text-xl text-white">Clean frame</p>
+                            <p className="ss-display text-xl text-white">
+                              {scanResult.visionError ? 'Scan incomplete' : 'Clean frame'}
+                            </p>
                             <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                              No sensitive visual regions were flagged.
+                              {scanResult.visionError
+                                ? 'The vision provider did not return findings. This is not proof the photo is safe.'
+                                : 'No sensitive visual regions were flagged.'}
                             </p>
                           </div>
                         ) : (

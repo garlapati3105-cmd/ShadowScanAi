@@ -70,7 +70,13 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
       console.warn('[analysisPipeline] OpenRouter returned no findings. Trying Gemini fallback.');
       const geminiResult = await analyzeImageVisuals(imageBuffer, 'image/jpeg', { mode });
       if (geminiResult?.findings?.length) return geminiResult;
-      return analyzeImageVisualsGrok(imageBuffer, 'image/jpeg');
+      const grokResult = await analyzeImageVisualsGrok(imageBuffer, 'image/jpeg');
+      if (grokResult?.findings?.length) return grokResult;
+      return {
+        findings: [],
+        recommendations: [],
+        error: result?.error || geminiResult?.error || grokResult?.error || 'Vision providers returned no findings.',
+      };
     }
     if (provider === 'gemini') {
       return analyzeImageVisuals(imageBuffer, 'image/jpeg', { mode });
@@ -79,12 +85,12 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
       return analyzeImageVisualsGrok(imageBuffer, 'image/jpeg');
     }
     console.warn('[analysisPipeline] No visual AI provider configured.');
-    return { findings: [], recommendations: [] };
+    return { findings: [], recommendations: [], error: 'No visual AI provider configured.' };
   };
 
   const [metadata, gemini, qrFindings, barcodeAll] = await Promise.all([
     Promise.resolve().then(() => extractMetadata(buffer)),
-    withTimeout(runVision(geminiBuffer, 'detect'), 90000, { findings: [], recommendations: [] }, 'vision'),
+    withTimeout(runVision(geminiBuffer, 'detect'), 90000, { findings: [], recommendations: [], error: 'Vision timed out.' }, 'vision'),
     Promise.resolve().then(() => {
       try {
         return detectQrCodes(pixels);
@@ -157,23 +163,30 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
   const afterScore = calculateSanitizedScore(metadata, visualAnalysis, findings.map((_, idx) => idx));
   const attackerSimulation = generateAttackerScenario(metadata, visualAnalysis);
 
-  const verifyBuffer = await sharp(sanitized.buffer)
-    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-    .jpeg({ quality: 80 })
-    .toBuffer();
-  const residualVision = await withTimeout(
-    runVision(verifyBuffer, 'verify'),
-    60000,
-    { findings: [], recommendations: [] },
-    'vision-verify'
-  );
-  const residualSensitive = (residualVision.findings || []).filter((item) => {
-    const type = String(item.type || '').toLowerCase();
-    return !['face', 'person', 'person_background', 'human_face', 'human'].includes(type);
-  });
+  let residualSensitive = [];
+  if (findings.length > 0) {
+    const verifyBuffer = await sharp(sanitized.buffer)
+      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    const residualVision = await withTimeout(
+      runVision(verifyBuffer, 'verify'),
+      60000,
+      { findings: [], recommendations: [] },
+      'vision-verify'
+    );
+    residualSensitive = (residualVision.findings || []).filter((item) => {
+      const type = String(item.type || '').toLowerCase();
+      return !['face', 'person', 'person_background', 'human_face', 'human'].includes(type);
+    });
+  } else {
+    console.log('[analysisPipeline] Skipping verify pass because detect returned no findings.');
+  }
   const validation = {
     ...sanitized.validation,
-    visualResidual: residualSensitive.length === 0 ? 'PASS' : 'FAIL',
+    visualResidual: findings.length === 0
+      ? (gemini.error ? 'SKIPPED' : 'PASS')
+      : residualSensitive.length === 0 ? 'PASS' : 'FAIL',
   };
 
   const orientedPreview = `data:image/jpeg;base64,${(
@@ -206,5 +219,6 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
     orientedPreview,
     validation,
     attackerSimulation,
+    visionError: gemini.error || null,
   };
 }
