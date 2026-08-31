@@ -42,8 +42,12 @@ function withTimeout(promise, ms, fallback, label) {
 
 export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisId }) {
   const id = analysisId || randomUUID();
-  const canonical = await sharp(buffer).rotate().jpeg({ quality: 92 }).toBuffer();
-  const pixels = await decodeRgba(canonical, 1200);
+  const canonical = await sharp(buffer)
+    .rotate()
+    .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 82 })
+    .toBuffer();
+  const pixels = await decodeRgba(canonical, 960);
 
   const geminiBuffer = await sharp(canonical)
     .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
@@ -100,9 +104,13 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
   ]);
 
   let ocrWords = [];
-  if (!gemini || !gemini.findings || gemini.findings.length === 0) {
+  const onRender = Boolean(process.env.RENDER);
+  const allowOcr = process.env.DISABLE_OCR !== '1' && !onRender;
+  if (allowOcr && (!gemini || !gemini.findings || gemini.findings.length === 0)) {
     console.log('[analysisPipeline] Gemini returned 0 visual findings (or failed). Running local Tesseract OCR...');
     ocrWords = await withTimeout(extractOcrWords(canonical), 60000, [], 'ocr');
+  } else if (!gemini?.findings?.length) {
+    console.log('[analysisPipeline] Skipping Tesseract OCR to stay within Render memory limits.');
   } else {
     console.log('[analysisPipeline] Gemini returned findings. Skipping local Tesseract OCR to conserve memory.');
   }
@@ -169,7 +177,7 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
   };
 
   const orientedPreview = `data:image/jpeg;base64,${(
-    await sharp(canonical).resize(1400, 1400, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer()
+    await sharp(canonical).resize(1100, 1100, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer()
   ).toString('base64')}`;
 
   findings.forEach((finding, idx) => {

@@ -145,10 +145,8 @@ export function mergeAndValidateFindings({
     if (type === 'screen' || type === 'laptopscreen') {
       if (/chat|whatsapp|telegram|instagram|sms|message|code|document|email|password|otp|text|readable/.test(blob)) {
         type = 'private_chat';
-      } else if (boxArea(raw.box) <= 22 * 100) {
-        type = 'private_chat';
       } else {
-        continue;
+        type = 'screen';
       }
     }
 

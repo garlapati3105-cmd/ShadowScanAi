@@ -6,6 +6,7 @@ import { runPrivacyAnalysis } from '../services/analysisPipeline.js';
 import { putSafeImage, getSafeImage } from '../lib/analysisStore.js';
 
 const router = express.Router();
+let scanGate = Promise.resolve();
 
 router.post('/scan', (req, res, next) => {
   memoryUpload.single('image')(req, res, async (err) => {
@@ -44,12 +45,19 @@ router.post('/scan', (req, res, next) => {
     const safeFilename = sanitizeFilename(originalname);
 
     try {
-      const result = await runPrivacyAnalysis({
-        buffer,
-        mimeType,
-        filename: safeFilename,
-        analysisId,
-      });
+      const run = async () =>
+        runPrivacyAnalysis({
+          buffer,
+          mimeType,
+          filename: safeFilename,
+          analysisId,
+        });
+      const queued = scanGate.then(run, run);
+      scanGate = queued.then(
+        () => undefined,
+        () => undefined
+      );
+      const result = await queued;
 
       putSafeImage(result.analysisId, {
         buffer: result.safeBuffer,

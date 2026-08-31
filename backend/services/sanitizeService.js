@@ -4,6 +4,7 @@ import { detectQrCodes } from './qrDetector.js';
 import { detectBarcodes } from './barcodeDetector.js';
 import { clampPercent } from '../validation/schema.js';
 import { looksLikeFaceCover } from '../lib/boxes.js';
+import { normalizeFindingType } from '../lib/findingTypes.js';
 
 const SENSITIVE_TYPES = new Set([
   'qr_code',
@@ -34,6 +35,8 @@ const SENSITIVE_TYPES = new Set([
   'vehicle',
   'location_text',
   'upi_id',
+  'other_sensitive',
+  'logo',
 ]);
 
 // These types must NEVER be sent to the visual sanitizer regardless of any other logic
@@ -50,32 +53,35 @@ function boxAreaFraction(box) {
 }
 
 function maxAreaForType(type) {
-  // QR and barcodes can be very large if the whole image is a code
-  if (type === 'qr_code' || type === 'barcode') return 0.90;
-  // Screens and private chats on a phone take up a significant portion of the image
-  if (type === 'private_chat' || type === 'screen') return 0.35;
-  // ID documents, passports can be large but not full-image
-  if (type === 'id_card' || type === 'student_id' || type === 'passport' || type === 'license' || type === 'id_document' || type === 'sensitive_document') return 0.50;
-  // Badges, whiteboards, etc.
-  if (type === 'institution_badge' || type === 'whiteboard') return 0.55;
-  // Small data types like email, phone, OTP, credentials, etc.
-  return 0.20;
+  if (type === 'qr_code' || type === 'barcode') return 0.95;
+  if (type === 'private_chat' || type === 'screen') return 0.88;
+  if (
+    type === 'id_card' ||
+    type === 'student_id' ||
+    type === 'passport' ||
+    type === 'license' ||
+    type === 'id_document' ||
+    type === 'sensitive_document' ||
+    type === 'whiteboard'
+  ) {
+    return 0.82;
+  }
+  if (type === 'institution_badge' || type === 'vehicle' || type === 'other_sensitive') return 0.70;
+  return 0.55;
 }
 
 function shouldBlurFinding(finding) {
   if (!finding?.box || finding.requiredProtection === false) return false;
-  const type = finding.type;
-  // Face and person types are NEVER sanitized — detection only
+  const type = normalizeFindingType(finding.type);
   if (NEVER_SANITIZE.has(type)) {
     console.log('[SANITIZE SKIP]', { id: finding.id, type, reason: 'face/person – detection only' });
     return false;
   }
   if (!SENSITIVE_TYPES.has(type)) {
-    console.log('[SANITIZE SKIP]', { id: finding.id, type, reason: 'not sensitive content' });
-    return false;
+    console.log('[SANITIZE APPLY]', { id: finding.id, type, reason: 'unknown type with box – protecting' });
   }
   const area = boxAreaFraction(finding.box);
-  if (area > maxAreaForType(type)) {
+  if (area > maxAreaForType(SENSITIVE_TYPES.has(type) ? type : 'other_sensitive')) {
     console.log('[SANITIZE SKIP]', { id: finding.id, type, area: area.toFixed(4), reason: 'box too large for type' });
     return false;
   }
@@ -101,7 +107,7 @@ function isValidRegion(region, imageWidth, imageHeight) {
   // Reject any region that covers more than 70% of total image area
   const regionArea = width * height;
   const imageArea = imageWidth * imageHeight;
-  if (regionArea / imageArea > 0.70) {
+  if (regionArea / imageArea > 0.92) {
     console.warn('[SANITIZE REJECT] Region covers >70% of image area – skipping', { left, top, width, height, imageWidth, imageHeight });
     return false;
   }
@@ -189,7 +195,7 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
 
   const referenceFindings = allFindings && allFindings.length > 0 ? allFindings : findings;
   const faceBoxes = referenceFindings
-    .filter((f) => NEVER_SANITIZE.has(f.type))
+    .filter((f) => NEVER_SANITIZE.has(normalizeFindingType(f.type)))
     .map((f) => f.box)
     .filter((box) => box && typeof box.x === 'number' && typeof box.y === 'number' && typeof box.width === 'number' && typeof box.height === 'number');
 
@@ -197,13 +203,14 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
   let output = base;
   for (const finding of findings) {
     if (!shouldBlurFinding(finding)) continue;
+    const type = normalizeFindingType(finding.type);
 
     // Subtract all faces from the sensitive finding's box
     const clippedBoxes = subtractFaceBoxes(finding.box, faceBoxes);
 
     for (const clBox of clippedBoxes) {
       const region = regionFromBox(clBox, width, height);
-      // Safety: reject any region that fails dimension validation or covers >70% of image
+      // Safety: reject invalid regions or boxes that cover almost the entire image
       if (!isValidRegion(region, width, height)) continue;
       const duplicate = applied.some((prev) => {
         const dx = Math.abs(prev.left - region.left);
@@ -216,13 +223,13 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
       applied.push(region);
       console.log('[SANITIZING FINDING]', {
         id: finding.id,
-        type: finding.type,
+        type,
         originalBox: finding.box,
         clippedBox: clBox,
         pixels: region,
         blur: 'APPLIED',
       });
-      output = await protectRegion(output, region, finding.type);
+      output = await protectRegion(output, region, type);
     }
   }
 

@@ -13,27 +13,37 @@ const originalWarn = console.warn;
 const originalError = console.error;
 
 const formatLog = (args) => {
-  return args.map((a) => {
-    if (a instanceof Error) return a.stack || a.message;
-    return typeof a === 'object' ? JSON.stringify(a) : String(a);
-  }).join(' ');
+  return args
+    .map((a) => {
+      if (a instanceof Error) return a.message;
+      if (typeof a === 'object') {
+        try {
+          return JSON.stringify(a).slice(0, 280);
+        } catch {
+          return '[object]';
+        }
+      }
+      return String(a).slice(0, 280);
+    })
+    .join(' ')
+    .slice(0, 400);
 };
 
 console.log = (...args) => {
   serverLogs.push(`[LOG] [${new Date().toISOString()}] ${formatLog(args)}`);
-  if (serverLogs.length > 100) serverLogs.shift();
+  if (serverLogs.length > 20) serverLogs.shift();
   originalLog.apply(console, args);
 };
 
 console.warn = (...args) => {
   serverLogs.push(`[WARN] [${new Date().toISOString()}] ${formatLog(args)}`);
-  if (serverLogs.length > 100) serverLogs.shift();
+  if (serverLogs.length > 20) serverLogs.shift();
   originalWarn.apply(console, args);
 };
 
 console.error = (...args) => {
   serverLogs.push(`[ERROR] [${new Date().toISOString()}] ${formatLog(args)}`);
-  if (serverLogs.length > 100) serverLogs.shift();
+  if (serverLogs.length > 20) serverLogs.shift();
   originalError.apply(console, args);
 };
 
@@ -94,9 +104,11 @@ app.get('/api/health', async (req, res) => {
   const openRouterOk = isOpenRouterConfigured();
   const geminiOk = isGeminiConfigured();
   const activeProvider = resolveVisionProvider();
+  const rssMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
   let openRouterErr = null;
 
-  if (openRouterOk) {
+  // Render hits this often. Skip the live OpenRouter ping unless ?deep=1.
+  if (openRouterOk && String(req.query.deep) === '1') {
     try {
       const apiKey = process.env.OPENROUTER_API_KEY;
       const model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
@@ -125,10 +137,13 @@ app.get('/api/health', async (req, res) => {
   res.json({
     success: true,
     message: 'ShadowScan backend is running',
+    memoryMb: rssMb,
     logs: serverLogs,
     openrouter: {
       configured: openRouterOk,
-      testStatus: openRouterOk ? (openRouterErr ? 'failed' : 'ok') : 'disabled',
+      testStatus: openRouterOk
+        ? (String(req.query.deep) === '1' ? (openRouterErr ? 'failed' : 'ok') : 'skipped')
+        : 'disabled',
       error: openRouterErr,
     },
     gemini: {

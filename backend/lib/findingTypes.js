@@ -46,13 +46,14 @@ export function normalizeFindingType(type = '') {
   // Aadhaar
   if (t === 'aadhar' || t === 'aadhaar_number' || t === 'aadhaar') return 'aadhaar';
   // Location
-  if (t === 'location_clue' || t === 'visual_location') return 'location_text';
+  if (t === 'location_clue' || t === 'visual_location' || t === 'visible_gps' || t === 'visible_timestamp') return 'location_text';
   // Vehicle
   if (t === 'vehicle_identifier' || t === 'license_plate' || t === 'vehicle_plate') return 'vehicle';
   // Financial
   if (t === 'financial_information' || t === 'financial_card' || t === 'credit_card') return 'financial_card';
   // Documents
-  if (t === 'sensitive_document') return 'id_card';
+  if (t === 'sensitive_document' || t === 'medical_information' || t === 'legal_information') return 'sensitive_document';
+  if (t === 'other_sensitive' || t === 'othersensitive') return 'other_sensitive';
   return t;
 }
 
