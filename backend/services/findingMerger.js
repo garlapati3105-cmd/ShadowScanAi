@@ -8,8 +8,12 @@ const REJECT_TYPES = new Set([
   'chair',
   'table',
   'background',
+]);
+
+const DEVICE_AS_SCREEN = new Set([
   'phone',
   'mobile',
+  'smartphone',
   'laptop',
   'tablet',
   'monitor',
@@ -115,6 +119,7 @@ export function mergeAndValidateFindings({
 
   for (const raw of geminiFindings) {
     let type = normalizeFindingType(raw.type);
+    if (DEVICE_AS_SCREEN.has(type)) type = 'screen';
     if (REJECT_TYPES.has(type)) continue;
 
     // Drop hallucinated findings that describe the tool itself instead of image content
@@ -132,7 +137,10 @@ export function mergeAndValidateFindings({
       if (!barcodeConfirmed.some((item) => iou(item.box, raw.box) > 0.2)) continue;
       continue;
     }
-    if (type === 'email' && !/email|@/.test(`${raw.evidence || ''} ${raw.description || ''}`)) {
+    if (
+      type === 'email' &&
+      !/email|@|inbox|gmail|outlook|mail/.test(`${raw.evidence || ''} ${raw.description || ''} ${raw.label || ''}`)
+    ) {
       continue;
     }
     if (type === 'phone_number' && !/\d{6,}/.test(`${raw.evidence || ''} ${raw.description || ''}`)) {

@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { VisualAnalysisSchema } from '../validation/schema.js';
 import { toTopLeftPercent } from '../lib/boxes.js';
 import { SYSTEM_PROMPT, visionUserPrompt } from '../lib/visionPrompts.js';
+import { parseModelJson } from '../lib/visionJson.js';
 
 const EMPTY = { findings: [], recommendations: [] };
 
@@ -128,7 +129,7 @@ export async function analyzeImageVisuals(buffer, mimeType, { mode = 'detect' } 
         if (!textOutput) return { ...EMPTY, error: 'Gemini returned an empty response.' };
 
         currentKeyIndex = (keyIndex + 1) % apiKeys.length;
-        return normalizeVisualAnalysis(JSON.parse(textOutput));
+        return normalizeVisualAnalysis(parseModelJson(textOutput));
       } catch (err) {
         console.warn(`[GeminiService] API key index ${keyIndex} model ${modelName} failed:`, err.message);
         lastError = err;

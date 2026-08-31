@@ -2,6 +2,7 @@ import { VisualAnalysisSchema } from '../validation/schema.js';
 import { toTopLeftPercent } from '../lib/boxes.js';
 import { SYSTEM_PROMPT, visionUserPrompt } from '../lib/visionPrompts.js';
 import { getOpenRouterKeys } from '../lib/visionProvider.js';
+import { parseModelJson } from '../lib/visionJson.js';
 
 const EMPTY = { findings: [], recommendations: [] };
 
@@ -57,7 +58,7 @@ function normalizeVisualAnalysis(parsedData) {
 function defaultMaxTokens() {
   const n = Number(process.env.OPENROUTER_MAX_TOKENS);
   if (Number.isFinite(n) && n >= 256) return Math.min(Math.floor(n), 2048);
-  return 1024;
+  return 1536;
 }
 
 function affordedTokens(errText) {
@@ -136,6 +137,10 @@ export async function analyzeImageVisualsOpenRouter(buffer, mimeType, { mode = '
           lastError = new Error(`OpenRouter API HTTP ${response.status}: ${errText.slice(0, 200)}`);
 
           if (response.status === 402) {
+            if (/in_flight/i.test(errText)) {
+              await new Promise((resolve) => setTimeout(resolve, 1800));
+              continue;
+            }
             const afford = affordedTokens(errText);
             const nextTokens =
               afford != null
@@ -159,8 +164,21 @@ export async function analyzeImageVisualsOpenRouter(buffer, mimeType, { mode = '
           break;
         }
 
+        let parsed;
+        try {
+          parsed = parseModelJson(messageContent);
+        } catch (parseErr) {
+          lastError = parseErr;
+          console.warn(`[OpenRouterService] Key ${keyIndex + 1} JSON parse failed:`, parseErr.message);
+          if (maxTokens < 2048) {
+            maxTokens = Math.min(2048, maxTokens + 512);
+            continue;
+          }
+          break;
+        }
+
         currentKeyIndex = keyIndex;
-        return normalizeVisualAnalysis(JSON.parse(messageContent));
+        return normalizeVisualAnalysis(parsed);
       } catch (err) {
         lastError = err;
         console.error(`[OpenRouterService] Key ${keyIndex + 1} failed:`, err.message);

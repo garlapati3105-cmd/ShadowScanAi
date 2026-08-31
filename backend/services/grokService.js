@@ -1,5 +1,6 @@
 import { VisualAnalysisSchema } from '../validation/schema.js';
 import { toTopLeftPercent } from '../lib/boxes.js';
+import { parseModelJson } from '../lib/visionJson.js';
 
 const EMPTY = { findings: [], recommendations: [] };
 
@@ -222,7 +223,7 @@ Return JSON:
       return EMPTY;
     }
 
-    return normalizeVisualAnalysis(JSON.parse(messageContent));
+    return normalizeVisualAnalysis(parseModelJson(messageContent));
   } catch (err) {
     console.error('[GrokService] xAI Visual analysis failed:', err.message);
     return EMPTY;
