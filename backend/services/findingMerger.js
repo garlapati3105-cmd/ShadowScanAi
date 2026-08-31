@@ -184,7 +184,7 @@ export function mergeAndValidateFindings({
     .map((item) => {
       if (item.type === 'qr_code' || item.type === 'barcode') return item;
       if (item.source === 'ocr') return item;
-      if (item.type === 'private_chat') {
+      if (item.type === 'private_chat' || item.type === 'screen') {
         const box = snapSensitiveBox(item.box, screenHint);
         return { ...item, box, boundingBox: box };
       }
@@ -198,7 +198,7 @@ export function mergeAndValidateFindings({
       if (item.type === 'institution_badge') return true;
       if (item.type === 'person_background') return true;
       // Remove findings that look like face/body cover boxes only for private_chat type
-      if (item.type === 'private_chat' && looksLikeFaceCover(item.box)) return false;
+      if (item.type === 'private_chat' && item.source !== 'screen-localizer' && looksLikeFaceCover(item.box)) return false;
       return true;
     });
 
@@ -216,6 +216,30 @@ export function mergeAndValidateFindings({
       keptChat = true;
     }
     oneChat.push(item);
+  }
+
+  const hasScreenContent = oneChat.some((item) =>
+    ['private_chat', 'screen', 'email', 'credentials', 'otp'].includes(item.type)
+  );
+  if (screenHint && !hasScreenContent) {
+    console.log('[findingMerger] Injecting local screen box because vision missed device text.', screenHint);
+    oneChat.push(
+      toFinding(
+        {
+          type: 'private_chat',
+          label: 'Readable device screen',
+          severity: 'high',
+          description: 'A phone or laptop screen with visible text was localized in this photo.',
+          evidence: 'Local screen detector',
+          reason: 'On-screen emails, chats, or other text can be copied if this photo is shared.',
+          potentialInference: 'An observer could read personal or work data from the display.',
+          box: screenHint,
+          confidence: 0.78,
+        },
+        analysisId,
+        { source: 'screen-localizer', validated: true, ...size }
+      )
+    );
   }
 
   return oneChat.slice(0, 40).map((item, index) => {

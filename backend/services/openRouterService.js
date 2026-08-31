@@ -55,7 +55,8 @@ function normalizeVisualAnalysis(parsedData) {
   });
 }
 
-function defaultMaxTokens() {
+function defaultMaxTokens(mode = 'detect') {
+  if (mode === 'verify') return 512;
   const n = Number(process.env.OPENROUTER_MAX_TOKENS);
   if (Number.isFinite(n) && n >= 256) return Math.min(Math.floor(n), 2048);
   return 1536;
@@ -87,7 +88,7 @@ export async function analyzeImageVisualsOpenRouter(buffer, mimeType, { mode = '
   for (let i = 0; i < apiKeys.length; i += 1) {
     const keyIndex = (currentKeyIndex + i) % apiKeys.length;
     const apiKey = apiKeys[keyIndex];
-    let maxTokens = defaultMaxTokens();
+    let maxTokens = defaultMaxTokens(mode);
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
@@ -142,10 +143,14 @@ export async function analyzeImageVisualsOpenRouter(buffer, mimeType, { mode = '
               continue;
             }
             const afford = affordedTokens(errText);
+            if (afford != null && afford < 800) {
+              console.warn(`[OpenRouterService] Key ${keyIndex + 1} has only ${afford} tokens left — rotating.`);
+              break;
+            }
             const nextTokens =
               afford != null
-                ? Math.min(maxTokens, Math.max(256, afford - 16))
-                : Math.max(256, Math.floor(maxTokens * 0.6));
+                ? Math.min(maxTokens, Math.max(800, afford - 16))
+                : Math.max(800, Math.floor(maxTokens * 0.75));
             if (nextTokens < maxTokens) {
               maxTokens = nextTokens;
               continue;
@@ -178,7 +183,10 @@ export async function analyzeImageVisualsOpenRouter(buffer, mimeType, { mode = '
         }
 
         currentKeyIndex = keyIndex;
-        return normalizeVisualAnalysis(parsed);
+        return {
+          ...normalizeVisualAnalysis(parsed),
+          truncated: Boolean(parsed.truncated),
+        };
       } catch (err) {
         lastError = err;
         console.error(`[OpenRouterService] Key ${keyIndex + 1} failed:`, err.message);

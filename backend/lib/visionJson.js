@@ -57,7 +57,7 @@ export function parseModelJson(text) {
     const salvaged = salvageFindings(raw);
     if (salvaged.findings.length) {
       console.warn(`[visionJson] Salvaged ${salvaged.findings.length} findings from truncated JSON`);
-      return salvaged;
+      return { ...salvaged, truncated: true };
     }
     throw new Error('Model JSON was truncated or invalid.');
   }

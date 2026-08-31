@@ -7,7 +7,8 @@ import {
   EyeOff,
   Download,
 } from 'lucide-react';
-import { sanitizeImage, downloadSafeImageFile } from '../services/api.js';
+import { downloadSafeImageFile, sanitizeImage } from '../services/api.js';
+import { protectionTargets } from '../lib/protection.js';
 
 export default function SafeComparisonPanel({
   analysisId,
@@ -23,6 +24,7 @@ export default function SafeComparisonPanel({
   const findings = (visualAnalysis?.findings || []).filter(
     (item) => !item.analysisId || item.analysisId === analysisId
   );
+  const blurTargets = protectionTargets(findings);
   const [localSafe, setLocalSafe] = useState(safeImage || null);
   const [localAfter, setLocalAfter] = useState(sanitizedScore || null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -38,7 +40,9 @@ export default function SafeComparisonPanel({
         originalFile,
         metadata,
         visualAnalysis,
-        findings.map((_, idx) => idx),
+        findings
+          .map((item, idx) => (protectionTargets([item]).length ? idx : -1))
+          .filter((idx) => idx >= 0),
         analysisId
       );
       if (data.analysisId && analysisId && data.analysisId !== analysisId) {
@@ -122,7 +126,7 @@ export default function SafeComparisonPanel({
                 </span>
               ))}
               <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 font-mono text-[10px] uppercase text-zinc-400">
-                <EyeOff className="h-3.5 w-3.5 text-emerald-400" /> {findings.length} protected
+                <EyeOff className="h-3.5 w-3.5 text-emerald-400" /> {validation?.protectedRegions ?? blurTargets.length} protected
               </span>
             </div>
           </div>

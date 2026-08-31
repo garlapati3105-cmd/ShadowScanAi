@@ -16,10 +16,9 @@ export function normalizeFindingType(type = '') {
   if (t === 'laptop_screen' || t === 'screen' || t === 'computer_screen' || t === 'sensitive_screen') return 'screen';
   // QR / barcode
   if (t === 'qr_code_detected' || t === 'qrcode' || t === 'qr') return 'qr_code';
-  // Face and identity presence
-  if (t === 'face' || t === 'human_face' || t === 'person_face') return 'face';
+  if (t.includes('face')) return 'face';
   if (t === 'person' || t === 'human') return 'person';
-  if (t === 'person_background' || t === 'background_person') return 'person_background';
+  if (t.includes('background_person') || t.includes('person_background')) return 'person_background';
   // Institution / badge / lanyard
   if (
     t === 'institution_badge' ||
@@ -55,5 +54,25 @@ export function normalizeFindingType(type = '') {
   if (t === 'sensitive_document' || t === 'medical_information' || t === 'legal_information') return 'sensitive_document';
   if (t === 'other_sensitive' || t === 'othersensitive') return 'other_sensitive';
   return t;
+}
+
+export const IDENTITY_ONLY_TYPES = new Set([
+  'face',
+  'person',
+  'person_background',
+  'human_face',
+  'human',
+]);
+
+export function isIdentityOnlyType(type = '') {
+  return IDENTITY_ONLY_TYPES.has(normalizeFindingType(type));
+}
+
+export function visionLooksIncomplete(result) {
+  if (!result) return true;
+  if (result.truncated || result.error) return true;
+  const findings = result.findings || [];
+  if (!findings.length) return true;
+  return findings.every((item) => isIdentityOnlyType(item.type));
 }
 

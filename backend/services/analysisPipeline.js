@@ -5,6 +5,7 @@ import { analyzeImageVisualsOpenRouter } from './openRouterService.js';
 import { analyzeImageVisuals } from './geminiService.js';
 import { analyzeImageVisualsGrok } from './grokService.js';
 import { resolveVisionProvider } from '../lib/visionProvider.js';
+import { visionLooksIncomplete } from '../lib/findingTypes.js';
 import { calculateExposureScore, calculateSanitizedScore } from './riskScoringService.js';
 import { generateAttackerScenario } from './attackerSimulationService.js';
 import { decodeRgba } from './imagePixels.js';
@@ -61,22 +62,38 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
     size: `${pixels.originalWidth}x${pixels.originalHeight}`,
   });
 
+  const mergeVision = (...parts) => {
+    const findings = [];
+    const recommendations = [];
+    const errors = [];
+    let truncated = false;
+    for (const part of parts) {
+      if (!part) continue;
+      if (part.truncated) truncated = true;
+      if (part.error) errors.push(part.error);
+      findings.push(...(part.findings || []));
+      recommendations.push(...(part.recommendations || []));
+    }
+    return {
+      findings,
+      recommendations,
+      truncated,
+      error: findings.length ? null : errors[0] || null,
+    };
+  };
+
   const runVision = async (imageBuffer, mode = 'detect') => {
     const provider = resolveVisionProvider();
     console.log(`[analysisPipeline] Routing visual ${mode} to ${provider} provider.`);
     if (provider === 'openrouter') {
       const result = await analyzeImageVisualsOpenRouter(imageBuffer, 'image/jpeg', { mode });
-      if (mode === 'verify' || result?.findings?.length) return result;
-      console.warn('[analysisPipeline] OpenRouter returned no findings. Trying Gemini fallback.');
+      if (mode === 'verify') return result;
+      if (!visionLooksIncomplete(result)) return result;
+      console.warn('[analysisPipeline] OpenRouter result incomplete (truncated, empty, or faces only). Trying Gemini fallback.');
       const geminiResult = await analyzeImageVisuals(imageBuffer, 'image/jpeg', { mode });
-      if (geminiResult?.findings?.length) return geminiResult;
+      if (!visionLooksIncomplete(geminiResult)) return mergeVision(result, geminiResult);
       const grokResult = await analyzeImageVisualsGrok(imageBuffer, 'image/jpeg');
-      if (grokResult?.findings?.length) return grokResult;
-      return {
-        findings: [],
-        recommendations: [],
-        error: result?.error || geminiResult?.error || grokResult?.error || 'Vision providers returned no findings.',
-      };
+      return mergeVision(result, geminiResult, grokResult);
     }
     if (provider === 'gemini') {
       return analyzeImageVisuals(imageBuffer, 'image/jpeg', { mode });

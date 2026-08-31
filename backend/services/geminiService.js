@@ -128,8 +128,9 @@ export async function analyzeImageVisuals(buffer, mimeType, { mode = 'detect' } 
         const textOutput = response.response.text();
         if (!textOutput) return { ...EMPTY, error: 'Gemini returned an empty response.' };
 
+        const parsed = parseModelJson(textOutput);
         currentKeyIndex = (keyIndex + 1) % apiKeys.length;
-        return normalizeVisualAnalysis(parseModelJson(textOutput));
+        return { ...normalizeVisualAnalysis(parsed), truncated: Boolean(parsed.truncated) };
       } catch (err) {
         console.warn(`[GeminiService] API key index ${keyIndex} model ${modelName} failed:`, err.message);
         lastError = err;

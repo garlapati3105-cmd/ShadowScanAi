@@ -3,8 +3,7 @@ import { decodeRgba } from './imagePixels.js';
 import { detectQrCodes } from './qrDetector.js';
 import { detectBarcodes } from './barcodeDetector.js';
 import { clampPercent } from '../validation/schema.js';
-import { looksLikeFaceCover } from '../lib/boxes.js';
-import { normalizeFindingType } from '../lib/findingTypes.js';
+import { isIdentityOnlyType, normalizeFindingType } from '../lib/findingTypes.js';
 
 const SENSITIVE_TYPES = new Set([
   'qr_code',
@@ -39,15 +38,6 @@ const SENSITIVE_TYPES = new Set([
   'logo',
 ]);
 
-// These types must NEVER be sent to the visual sanitizer regardless of any other logic
-const NEVER_SANITIZE = new Set([
-  'face',
-  'person',
-  'person_background',
-  'human_face',
-  'human',
-]);
-
 function boxAreaFraction(box) {
   return ((box?.width || 0) * (box?.height || 0)) / 10000;
 }
@@ -73,7 +63,7 @@ function maxAreaForType(type) {
 function shouldBlurFinding(finding) {
   if (!finding?.box || finding.requiredProtection === false) return false;
   const type = normalizeFindingType(finding.type);
-  if (NEVER_SANITIZE.has(type)) {
+  if (isIdentityOnlyType(type)) {
     console.log('[SANITIZE SKIP]', { id: finding.id, type, reason: 'face/person – detection only' });
     return false;
   }
@@ -195,7 +185,7 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
 
   const referenceFindings = allFindings && allFindings.length > 0 ? allFindings : findings;
   const faceBoxes = referenceFindings
-    .filter((f) => NEVER_SANITIZE.has(normalizeFindingType(f.type)))
+    .filter((f) => isIdentityOnlyType(f.type))
     .map((f) => f.box)
     .filter((box) => box && typeof box.x === 'number' && typeof box.y === 'number' && typeof box.width === 'number' && typeof box.height === 'number');
 
@@ -259,7 +249,7 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
   const format = mimeType === 'image/png' ? 'png' : 'jpeg';
   const encoded = format === 'png' ? await sharp(output).png().toBuffer() : await sharp(output).jpeg({ quality: 90 }).toBuffer();
 
-  console.log('[SAFE IMAGE GENERATED]', { findings: findings.length, bytes: encoded.length });
+  console.log('[SAFE IMAGE GENERATED]', { findings: findings.length, blurred: applied.length, bytes: encoded.length });
 
   return {
     buffer: encoded,
@@ -267,7 +257,8 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
     validation: {
       qr: qrHits === 0 ? 'PASS' : 'FAIL',
       barcode: barcodeHits === 0 ? 'PASS' : 'FAIL',
-      sensitiveText: findings.length ? 'PROTECTED' : 'PASS',
+      sensitiveText: applied.length ? 'PROTECTED' : 'PASS',
+      protectedRegions: applied.length,
     },
   };
 }

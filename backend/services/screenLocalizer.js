@@ -124,9 +124,9 @@ export function findLikelyScreenBox(pixels) {
       const ratio = box.height / Math.max(1, box.width);
       const cxPct = box.x + box.width / 2;
 
-      if (area < 0.018 || area > 0.22) continue;
-      if (box.width > 32) continue;
-      if (ratio < 1.15 || ratio > 4.2) continue;
+      if (area < 0.012 || area > 0.55) continue;
+      if (box.width > 72) continue;
+      if (ratio < 0.85 || ratio > 5.2) continue;
       if (box.y < 8 && box.height > 70 && cxPct < 48) continue;
 
       candidates.push({ box, energy, cxPct, area, fill });
