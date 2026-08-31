@@ -38,6 +38,7 @@ const SENSITIVE_TYPES = new Set([
   'logo',
   'calendar_information',
   'organization_identifier',
+  'signature',
 ]);
 
 function boxAreaFraction(box) {
@@ -110,7 +111,7 @@ function protectionFor(type) {
   if (type === 'qr_code' || type === 'barcode') {
     return { factor: 6, sigma: 42 };
   }
-  if (['private_chat', 'otp', 'credentials', 'api_key', 'password', 'aadhaar'].includes(type)) {
+  if (['private_chat', 'otp', 'credentials', 'api_key', 'password', 'aadhaar', 'signature'].includes(type)) {
     return { factor: 5, sigma: 48 };
   }
   return { factor: 7, sigma: 40 };

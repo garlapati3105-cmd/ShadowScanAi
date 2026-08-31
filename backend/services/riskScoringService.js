@@ -62,6 +62,10 @@ const RISK_WEIGHTS = {
       weight: 20,
       reason: 'Author metadata headers pinpoint the exact device operator or creator name.',
     },
+    signature: {
+      weight: 45,
+      reason: 'A visible handwritten signature can be copied and misused as identity proof.',
+    },
   },
 
   // ── Location Triggers ──

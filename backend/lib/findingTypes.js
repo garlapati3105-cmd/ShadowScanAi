@@ -52,6 +52,7 @@ export function normalizeFindingType(type = '') {
   if (t === 'financial_information' || t === 'financial_card' || t === 'credit_card') return 'financial_card';
   // Documents
   if (t === 'sensitive_document' || t === 'medical_information' || t === 'legal_information') return 'sensitive_document';
+  if (t.includes('signature') || t === 'autograph' || t === 'signed_name' || t === 'handwritten_name') return 'signature';
   if (t === 'other_sensitive' || t === 'othersensitive') return 'other_sensitive';
   return t;
 }

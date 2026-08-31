@@ -115,6 +115,8 @@ export const DETECT_USER_PROMPT = `Analyze this original image. Identify ALL vis
 
 Look for sensitive objects, readable text, QR/barcodes, identity documents, chats, credentials, and visible overlays such as timestamps, GPS widgets, maps, watermarks, and screenshot UI.
 
+If a handwritten signature, autograph, or signed name is visible, report type signature with a tight box around the ink only. If there are multiple signatures, report each one separately.
+
 If this image has more than one QR code or more than one barcode, report EACH code as its own finding with its own box. Do not merge multiple codes into a single region.
 
 Look for whatever is actually in THIS image. Different photos leak different things: a QR on one, an ID on another, a whiteboard on another, emails on a phone on another. Do not invent a phone screen, document, or QR if it is not visible.
@@ -125,7 +127,7 @@ Keep JSON complete and compact: at most 12 findings, short evidence strings, val
 
 Do not invent hidden EXIF/GPS/device metadata that is not printed in the image.
 
-Use descriptive types such as: face, person_background, institution_badge, private_chat, credentials, otp, email, phone_number, upi_id, id_number, qr_code, barcode, id_document, sensitive_document, sensitive_screen, whiteboard, location_clue, organization_identifier, vehicle_identifier, financial_information, medical_information, legal_information, calendar_information, visible_timestamp, visible_gps, other_sensitive.
+Use descriptive types such as: face, person_background, institution_badge, private_chat, credentials, otp, email, phone_number, upi_id, id_number, qr_code, barcode, id_document, sensitive_document, sensitive_screen, whiteboard, location_clue, organization_identifier, vehicle_identifier, financial_information, medical_information, legal_information, calendar_information, visible_timestamp, visible_gps, signature, other_sensitive.
 
 Create a new descriptive type if elements do not fit the above types.
 
@@ -145,7 +147,7 @@ RULES FOR BLURRED CONTENT:
 - Only report content that remains clearly readable or scannable after protection.
 
 STILL REPORT IF READABLE:
-- Unredacted credentials, OTPs, emails, phone numbers, QR codes, barcodes
+- Unredacted credentials, OTPs, emails, phone numbers, QR codes, barcodes, signatures
 - Readable ID numbers, chat messages, addresses, maps, timestamps, GPS text
 - Any other sensitive text or codes that a person could still copy from this image
 
