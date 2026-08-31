@@ -4,8 +4,15 @@ function nonEmptyKey(value, placeholders = []) {
   return !placeholders.includes(key);
 }
 
+export function getOpenRouterKeys() {
+  return String(process.env.OPENROUTER_API_KEY || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => nonEmptyKey(item));
+}
+
 export function isOpenRouterConfigured() {
-  return nonEmptyKey(process.env.OPENROUTER_API_KEY);
+  return getOpenRouterKeys().length > 0;
 }
 
 export function isGeminiConfigured() {

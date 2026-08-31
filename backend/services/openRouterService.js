@@ -1,6 +1,7 @@
 import { VisualAnalysisSchema } from '../validation/schema.js';
 import { toTopLeftPercent } from '../lib/boxes.js';
 import { SYSTEM_PROMPT, visionUserPrompt } from '../lib/visionPrompts.js';
+import { getOpenRouterKeys } from '../lib/visionProvider.js';
 
 const EMPTY = { findings: [], recommendations: [] };
 
@@ -66,83 +67,108 @@ function affordedTokens(errText) {
   return Number.isFinite(value) ? value : null;
 }
 
+let currentKeyIndex = 0;
+
+function shouldRotateKey(status) {
+  return status === 401 || status === 402 || status === 403 || status === 429;
+}
+
 export async function analyzeImageVisualsOpenRouter(buffer, mimeType, { mode = 'detect' } = {}) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey || apiKey.trim() === '') {
+  const apiKeys = getOpenRouterKeys();
+  if (apiKeys.length === 0) {
     return { ...EMPTY, error: 'OpenRouter is not configured.' };
   }
 
   const model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
   const dataUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
-  let maxTokens = defaultMaxTokens();
+  let lastError = null;
 
-  try {
+  for (let i = 0; i < apiKeys.length; i += 1) {
+    const keyIndex = (currentKeyIndex + i) % apiKeys.length;
+    const apiKey = apiKeys[keyIndex];
+    let maxTokens = defaultMaxTokens();
+
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-      console.log(`[OpenRouterService] Routing visual ${mode} using model ${model} (max_tokens=${maxTokens})...`);
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://shadowscanai.onrender.com',
-          'X-Title': 'ShadowScan AI',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: 'system',
-              content: SYSTEM_PROMPT,
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: visionUserPrompt(mode),
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: dataUrl,
+      try {
+        console.log(
+          `[OpenRouterService] Routing visual ${mode} with key ${keyIndex + 1}/${apiKeys.length} model ${model} (max_tokens=${maxTokens})...`
+        );
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+            'HTTP-Referer': 'https://shadowscanai.onrender.com',
+            'X-Title': 'ShadowScan AI',
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: 'system',
+                content: SYSTEM_PROMPT,
+              },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: visionUserPrompt(mode),
                   },
-                },
-              ],
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.1,
-          max_tokens: maxTokens,
-        }),
-      });
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: dataUrl,
+                    },
+                  },
+                ],
+              },
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0.1,
+            max_tokens: maxTokens,
+          }),
+        });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error(`[OpenRouterService] OpenRouter API HTTP ${response.status}:`, errText.slice(0, 500));
-        if (response.status === 402) {
-          const afford = affordedTokens(errText);
-          const nextTokens = afford != null ? Math.min(maxTokens, Math.max(256, afford - 16)) : Math.max(256, Math.floor(maxTokens * 0.6));
-          if (nextTokens < maxTokens) {
-            maxTokens = nextTokens;
-            continue;
+        if (!response.ok) {
+          const errText = await response.text();
+          console.error(`[OpenRouterService] Key ${keyIndex + 1} HTTP ${response.status}:`, errText.slice(0, 500));
+          lastError = new Error(`OpenRouter API HTTP ${response.status}: ${errText.slice(0, 200)}`);
+
+          if (response.status === 402) {
+            const afford = affordedTokens(errText);
+            const nextTokens =
+              afford != null
+                ? Math.min(maxTokens, Math.max(256, afford - 16))
+                : Math.max(256, Math.floor(maxTokens * 0.6));
+            if (nextTokens < maxTokens) {
+              maxTokens = nextTokens;
+              continue;
+            }
           }
+
+          if (shouldRotateKey(response.status)) break;
+          return { ...EMPTY, error: lastError.message };
         }
-        throw new Error(`OpenRouter API HTTP ${response.status}: ${errText.slice(0, 200)}`);
-      }
 
-      const data = await response.json();
-      const messageContent = data.choices?.[0]?.message?.content;
-      if (!messageContent) {
-        console.warn('[OpenRouterService] Empty response content from OpenRouter.');
-        return { ...EMPTY, error: 'OpenRouter returned an empty response.' };
-      }
+        const data = await response.json();
+        const messageContent = data.choices?.[0]?.message?.content;
+        if (!messageContent) {
+          console.warn('[OpenRouterService] Empty response content from OpenRouter.');
+          lastError = new Error('OpenRouter returned an empty response.');
+          break;
+        }
 
-      return normalizeVisualAnalysis(JSON.parse(messageContent));
+        currentKeyIndex = keyIndex;
+        return normalizeVisualAnalysis(JSON.parse(messageContent));
+      } catch (err) {
+        lastError = err;
+        console.error(`[OpenRouterService] Key ${keyIndex + 1} failed:`, err.message);
+        break;
+      }
     }
-
-    throw new Error('OpenRouter request failed after token-budget retries.');
-  } catch (err) {
-    console.error('[OpenRouterService] OpenRouter Visual analysis failed:', err.message);
-    return { ...EMPTY, error: err.message };
   }
+
+  console.error('[OpenRouterService] All OpenRouter keys failed. Last error:', lastError?.message);
+  return { ...EMPTY, error: lastError?.message || 'OpenRouter visual analysis failed.' };
 }

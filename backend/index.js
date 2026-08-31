@@ -5,7 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import scanRouter from './routes/scan.js';
 import sanitizeRouter from './routes/sanitize.js';
-import { isGeminiConfigured, isOpenRouterConfigured, resolveVisionProvider } from './lib/visionProvider.js';
+import { getOpenRouterKeys, isGeminiConfigured, isOpenRouterConfigured, resolveVisionProvider } from './lib/visionProvider.js';
 
 const serverLogs = [];
 const originalLog = console.log;
@@ -110,7 +110,7 @@ app.get('/api/health', async (req, res) => {
   // Render hits this often. Skip the live OpenRouter ping unless ?deep=1.
   if (openRouterOk && String(req.query.deep) === '1') {
     try {
-      const apiKey = process.env.OPENROUTER_API_KEY;
+      const apiKey = getOpenRouterKeys()[0];
       const model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
       const testRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -171,7 +171,9 @@ app.listen(PORT, '0.0.0.0', () => {
   if (lan) console.log(`LAN: http://${lan}:${PORT}`);
 
   const provider = resolveVisionProvider();
-  console.log(`OpenRouter mode: ${isOpenRouterConfigured() ? 'enabled' : 'disabled'}`);
+  console.log(
+    `OpenRouter mode: ${isOpenRouterConfigured() ? `enabled (${getOpenRouterKeys().length} key${getOpenRouterKeys().length === 1 ? '' : 's'})` : 'disabled'}`
+  );
   console.log(`Gemini mode: ${isGeminiConfigured() ? 'enabled' : 'disabled'}`);
   console.log(`Active Visual Provider: ${provider}`);
 });
