@@ -145,7 +145,7 @@ export function mergeAndValidateFindings({
       }
     }
 
-    if (accepted.some((item) => item.type === type && iou(item.box, raw.box) > 0.45)) continue;
+    if (accepted.some((item) => item.type === type && iou(item.box, raw.box) > (type === 'qr_code' || type === 'barcode' ? 0.72 : 0.45))) continue;
 
     accepted.push(
       toFinding(
@@ -163,7 +163,7 @@ export function mergeAndValidateFindings({
 
   const unique = [];
   for (const item of accepted) {
-    if (unique.some((k) => k.type === item.type && iou(k.box, item.box) > 0.45)) continue;
+    if (unique.some((k) => k.type === item.type && iou(k.box, item.box) > (item.type === 'qr_code' || item.type === 'barcode' ? 0.72 : 0.45))) continue;
     unique.push(item);
   }
 

@@ -84,16 +84,19 @@ export function detectBarcodes(pixels, { tiles = false } = {}) {
   if (full) findings.push(full);
   if (!tiles) return dedupe(findings);
 
-  const cols = 2;
-  const rows = 2;
-  const tileW = Math.floor(width / cols);
-  const tileH = Math.floor(height / rows);
+  const cols = 3;
+  const rows = 3;
+  const overlap = 0.2;
+  const tileW = Math.floor(width / (cols - overlap * (cols - 1)));
+  const tileH = Math.floor(height / (rows - overlap * (rows - 1)));
+  const stepX = Math.floor(tileW * (1 - overlap));
+  const stepY = Math.floor(tileH * (1 - overlap));
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
-      const x = col * tileW;
-      const y = row * tileH;
-      const w = col === cols - 1 ? width - x : tileW;
-      const h = row === rows - 1 ? height - y : tileH;
+      const x = Math.min(width - tileW, col * stepX);
+      const y = Math.min(height - tileH, row * stepY);
+      const w = Math.min(tileW, width - x);
+      const h = Math.min(tileH, height - y);
       const slice = new Uint8ClampedArray(w * h * 4);
       for (let line = 0; line < h; line += 1) {
         const src = ((y + line) * width + x) * 4;

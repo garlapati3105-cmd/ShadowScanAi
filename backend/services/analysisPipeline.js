@@ -118,7 +118,7 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
     }),
     Promise.resolve().then(() => {
       try {
-        return detectBarcodes(pixels);
+        return detectBarcodes(pixels, { tiles: true });
       } catch (err) {
         console.error('[BARCODE] failed:', err.message);
         return [];
