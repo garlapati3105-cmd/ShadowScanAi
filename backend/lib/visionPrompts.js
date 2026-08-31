@@ -115,7 +115,9 @@ export const DETECT_USER_PROMPT = `Analyze this original image. Identify ALL vis
 
 Look for sensitive objects, readable text, QR/barcodes, identity documents, chats, credentials, and visible overlays such as timestamps, GPS widgets, maps, watermarks, and screenshot UI.
 
-If a phone, laptop, tablet, or monitor shows readable emails, chats, notifications, or other text, report the SCREEN CONTENT as private_chat, email, or sensitive_screen. Do not label that finding as phone/laptop/device.
+Look for whatever is actually in THIS image. Different photos leak different things: a QR on one, an ID on another, a whiteboard on another, emails on a phone on another. Do not invent a phone screen, document, or QR if it is not visible.
+
+If a phone, laptop, tablet, or monitor in THIS image shows readable emails, chats, notifications, or other text, report the SCREEN CONTENT as private_chat, email, or sensitive_screen. Do not label that finding as phone/laptop/device.
 
 Keep JSON complete and compact: at most 12 findings, short evidence strings, valid boxes.
 

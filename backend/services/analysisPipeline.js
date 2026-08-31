@@ -158,6 +158,7 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
     imageWidth: pixels.originalWidth,
     imageHeight: pixels.originalHeight,
     screenHint,
+    visionIncomplete: visionLooksIncomplete(gemini),
   });
 
   console.log('[DETECTION]', {

@@ -36,6 +36,8 @@ const SENSITIVE_TYPES = new Set([
   'upi_id',
   'other_sensitive',
   'logo',
+  'calendar_information',
+  'organization_identifier',
 ]);
 
 function boxAreaFraction(box) {

@@ -97,6 +97,7 @@ export function mergeAndValidateFindings({
   imageWidth = 0,
   imageHeight = 0,
   screenHint = null,
+  visionIncomplete = false,
 }) {
   const accepted = [];
   const size = { imageWidth, imageHeight };
@@ -130,23 +131,9 @@ export function mergeAndValidateFindings({
     if (boxArea(raw.box) > 85 * 85) continue;
 
     if (type === 'qr_code') {
-      if (!qrConfirmed.some((item) => iou(item.box, raw.box) > 0.2)) continue;
-      continue;
-    }
-    if (type === 'barcode') {
-      if (!barcodeConfirmed.some((item) => iou(item.box, raw.box) > 0.2)) continue;
-      continue;
-    }
-    if (
-      type === 'email' &&
-      !/email|@|inbox|gmail|outlook|mail/.test(`${raw.evidence || ''} ${raw.description || ''} ${raw.label || ''}`)
-    ) {
-      continue;
-    }
-    if (type === 'phone_number' && !/\d{6,}/.test(`${raw.evidence || ''} ${raw.description || ''}`)) {
-      if (!patternFindings.some((item) => item.type === 'phone_number' && iou(item.box, raw.box) > 0.15)) {
-        continue;
-      }
+      if (qrConfirmed.some((item) => iou(item.box, raw.box) > 0.2)) continue;
+    } else if (type === 'barcode') {
+      if (barcodeConfirmed.some((item) => iou(item.box, raw.box) > 0.2)) continue;
     }
 
     const blob = `${raw.label || ''} ${raw.description || ''} ${raw.evidence || ''} ${raw.reason || ''}`.toLowerCase();
@@ -221,18 +208,29 @@ export function mergeAndValidateFindings({
   const hasScreenContent = oneChat.some((item) =>
     ['private_chat', 'screen', 'email', 'credentials', 'otp'].includes(item.type)
   );
-  if (screenHint && !hasScreenContent) {
-    console.log('[findingMerger] Injecting local screen box because vision missed device text.', screenHint);
+  const visionBlob = geminiFindings
+    .map((item) => `${item.type || ''} ${item.label || ''} ${item.description || ''} ${item.evidence || ''}`)
+    .join(' ')
+    .toLowerCase();
+  const visionSawDevice = /phone|smartphone|laptop|tablet|monitor|screen|gmail|inbox|whatsapp|telegram|chat|notification|email/.test(
+    visionBlob
+  );
+  if (screenHint?.injectOk && !hasScreenContent && (visionSawDevice || visionIncomplete)) {
+    console.log('[findingMerger] Adding screen box for this image only (device evidence or incomplete vision).', {
+      injectOk: screenHint.injectOk,
+      visionSawDevice,
+      visionIncomplete,
+    });
     oneChat.push(
       toFinding(
         {
           type: 'private_chat',
           label: 'Readable device screen',
           severity: 'high',
-          description: 'A phone or laptop screen with visible text was localized in this photo.',
-          evidence: 'Local screen detector',
-          reason: 'On-screen emails, chats, or other text can be copied if this photo is shared.',
-          potentialInference: 'An observer could read personal or work data from the display.',
+          description: 'This photo contains a device display with visible text.',
+          evidence: 'Localized from this image',
+          reason: 'On-screen text in this photo can be copied if it is shared.',
+          potentialInference: 'An observer could read data from the display in this image.',
           box: screenHint,
           confidence: 0.78,
         },

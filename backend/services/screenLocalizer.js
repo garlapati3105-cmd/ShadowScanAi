@@ -129,7 +129,7 @@ export function findLikelyScreenBox(pixels) {
       if (ratio < 0.85 || ratio > 5.2) continue;
       if (box.y < 8 && box.height > 70 && cxPct < 48) continue;
 
-      candidates.push({ box, energy, cxPct, area, fill });
+      candidates.push({ box, energy, cxPct, area, fill, ratio });
     }
   }
 
@@ -141,7 +141,15 @@ export function findLikelyScreenBox(pixels) {
     return b.energy * b.fill * bFacePenalty - a.energy * a.fill * aFacePenalty;
   });
 
-  const picked = candidates[0].box;
-  console.log('[SCREEN LOCALIZER]', { box: picked, candidates: candidates.length });
-  return picked;
+  const picked = candidates[0];
+  const injectOk =
+    picked.area >= 0.02 &&
+    picked.area <= 0.38 &&
+    picked.box.width <= 48 &&
+    picked.ratio >= 1.15 &&
+    picked.ratio <= 4.6 &&
+    picked.fill >= 0.45;
+
+  console.log('[SCREEN LOCALIZER]', { box: picked.box, candidates: candidates.length, injectOk });
+  return { ...picked.box, injectOk };
 }
