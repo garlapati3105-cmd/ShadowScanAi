@@ -91,6 +91,7 @@ router.post('/scan', (req, res, next) => {
         exposureScore: result.exposureScore,
         sanitizedScore: result.sanitizedScore,
         safeImage: result.safeImage,
+        safeImageUrl: `/api/analysis/${result.analysisId}/safe-image`,
         orientedPreview: result.orientedPreview,
         validation: result.validation,
         attackerSimulation: result.attackerSimulation,

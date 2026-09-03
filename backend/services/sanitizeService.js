@@ -117,7 +117,7 @@ function protectionFor(type) {
   return { factor: 7, sigma: 40 };
 }
 
-async function protectRegion(imageBuffer, region, type) {
+async function buildProtectedPatch(imageBuffer, region, type) {
   const { factor, sigma } = protectionFor(type);
   const tinyW = Math.max(4, Math.round(region.width / factor));
   const tinyH = Math.max(4, Math.round(region.height / factor));
@@ -128,9 +128,15 @@ async function protectRegion(imageBuffer, region, type) {
     .blur(sigma)
     .toBuffer();
 
-  return sharp(imageBuffer)
-    .composite([{ input: protectedPatch, left: region.left, top: region.top }])
-    .toBuffer();
+  return { input: protectedPatch, left: region.left, top: region.top };
+}
+
+async function applyRegionProtections(imageBuffer, regionEntries) {
+  if (!regionEntries.length) return imageBuffer;
+  const composites = await Promise.all(
+    regionEntries.map(({ region, type }) => buildProtectedPatch(imageBuffer, region, type))
+  );
+  return sharp(imageBuffer).composite(composites).toBuffer();
 }
 
 function subtractBox(S, F) {
@@ -180,8 +186,21 @@ function subtractFaceBoxes(sensitiveBox, faceBoxes) {
   return currentBoxes;
 }
 
-export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'image/jpeg', allFindings = []) {
-  const base = await sharp(buffer).rotate().toBuffer();
+export async function sanitizeVerifiedRegions(
+  buffer,
+  findings,
+  mimeType = 'image/jpeg',
+  allFindings = [],
+  options = {}
+) {
+  const {
+    alreadyOriented = false,
+    includeDataUrl = true,
+    previewMaxPx = 720,
+    skipCodeValidation = false,
+  } = options;
+
+  const base = alreadyOriented ? buffer : await sharp(buffer).rotate().toBuffer();
   const meta = await sharp(base).metadata();
   const width = meta.width || 1;
   const height = meta.height || 1;
@@ -193,17 +212,15 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
     .filter((box) => box && typeof box.x === 'number' && typeof box.y === 'number' && typeof box.width === 'number' && typeof box.height === 'number');
 
   const applied = [];
-  let output = base;
+  const regionEntries = [];
   for (const finding of findings) {
     if (!shouldBlurFinding(finding)) continue;
     const type = normalizeFindingType(finding.type);
 
-    // Subtract all faces from the sensitive finding's box
     const clippedBoxes = subtractFaceBoxes(finding.box, faceBoxes);
 
     for (const clBox of clippedBoxes) {
       const region = regionFromBox(clBox, width, height);
-      // Safety: reject invalid regions or boxes that cover almost the entire image
       if (!isValidRegion(region, width, height)) continue;
       const duplicate = applied.some((prev) => {
         const dx = Math.abs(prev.left - region.left);
@@ -214,6 +231,7 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
       });
       if (duplicate) continue;
       applied.push(region);
+      regionEntries.push({ region, type });
       console.log('[SANITIZING FINDING]', {
         id: finding.id,
         type,
@@ -222,13 +240,14 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
         pixels: region,
         blur: 'APPLIED',
       });
-      output = await protectRegion(output, region, type);
     }
   }
 
-  const countCodes = async (imageBuffer) => {
+  let output = await applyRegionProtections(base, regionEntries);
+
+  const countCodes = async (imageBuffer, maxEdge = 960) => {
     try {
-      const pixels = await decodeRgba(imageBuffer, 1600);
+      const pixels = await decodeRgba(imageBuffer, maxEdge);
       return {
         qrHits: detectQrCodes(pixels).length,
         barcodeHits: detectBarcodes(pixels, { tiles: false }).filter((item) => item.type === 'barcode').length,
@@ -239,14 +258,28 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
     }
   };
 
-  let { qrHits, barcodeHits } = await countCodes(output);
+  const needsCodeValidation =
+    !skipCodeValidation &&
+    regionEntries.some((entry) => entry.type === 'qr_code' || entry.type === 'barcode');
 
-  if (qrHits || barcodeHits) {
-    for (const finding of findings.filter((item) => (item.type === 'qr_code' || item.type === 'barcode') && shouldBlurFinding(item))) {
-      const region = regionFromBox(finding.box, width, height);
-      output = await protectRegion(output, region, finding.type);
-    }
+  let qrHits = 0;
+  let barcodeHits = 0;
+  if (needsCodeValidation) {
     ({ qrHits, barcodeHits } = await countCodes(output));
+
+    if (qrHits || barcodeHits) {
+      const retryEntries = [];
+      for (const finding of findings.filter((item) => (item.type === 'qr_code' || item.type === 'barcode') && shouldBlurFinding(item))) {
+        const region = regionFromBox(finding.box, width, height);
+        if (isValidRegion(region, width, height)) {
+          retryEntries.push({ region, type: normalizeFindingType(finding.type) });
+        }
+      }
+      if (retryEntries.length) {
+        output = await applyRegionProtections(output, retryEntries);
+        ({ qrHits, barcodeHits } = await countCodes(output));
+      }
+    }
   }
 
   const format = mimeType === 'image/png' ? 'png' : 'jpeg';
@@ -254,12 +287,21 @@ export async function sanitizeVerifiedRegions(buffer, findings, mimeType = 'imag
 
   console.log('[SAFE IMAGE GENERATED]', { findings: findings.length, blurred: applied.length, bytes: encoded.length });
 
+  let dataUrl = null;
+  if (includeDataUrl) {
+    const preview = await sharp(encoded)
+      .resize(previewMaxPx, previewMaxPx, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 72 })
+      .toBuffer();
+    dataUrl = `data:image/jpeg;base64,${preview.toString('base64')}`;
+  }
+
   return {
     buffer: encoded,
-    dataUrl: `data:${mimeType};base64,${encoded.toString('base64')}`,
+    dataUrl,
     validation: {
-      qr: qrHits === 0 ? 'PASS' : 'FAIL',
-      barcode: barcodeHits === 0 ? 'PASS' : 'FAIL',
+      qr: needsCodeValidation ? (qrHits === 0 ? 'PASS' : 'FAIL') : 'PASS',
+      barcode: needsCodeValidation ? (barcodeHits === 0 ? 'PASS' : 'FAIL') : 'PASS',
       sensitiveText: applied.length ? 'PROTECTED' : 'PASS',
       protectedRegions: applied.length,
     },

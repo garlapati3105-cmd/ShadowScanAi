@@ -7,7 +7,7 @@ import {
   EyeOff,
   Download,
 } from 'lucide-react';
-import { downloadSafeImageFile, sanitizeImage } from '../services/api.js';
+import { downloadSafeImageFile, sanitizeImage, buildSafeImageUrl } from '../services/api.js';
 import { protectionTargets } from '../lib/protection.js';
 
 export default function SafeComparisonPanel({
@@ -25,7 +25,7 @@ export default function SafeComparisonPanel({
     (item) => !item.analysisId || item.analysisId === analysisId
   );
   const blurTargets = protectionTargets(findings);
-  const [localSafe, setLocalSafe] = useState(safeImage || null);
+  const [localSafe, setLocalSafe] = useState(safeImage || buildSafeImageUrl(analysisId));
   const [localAfter, setLocalAfter] = useState(sanitizedScore || null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -49,7 +49,7 @@ export default function SafeComparisonPanel({
         console.warn('[STALE RESULT] DISCARD', { received: data.analysisId, current: analysisId });
         return;
       }
-      setLocalSafe(data.sanitizedImage);
+      setLocalSafe(data.sanitizedImage || buildSafeImageUrl(analysisId));
       setLocalAfter(data.exposureScore);
     } catch (err) {
       setErrorMessage(err?.response?.data?.error || err?.message || 'Sanitization failed.');

@@ -5,7 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import scanRouter from './routes/scan.js';
 import sanitizeRouter from './routes/sanitize.js';
-import { getOpenRouterKeys, isGeminiConfigured, isOpenRouterConfigured, resolveVisionProvider } from './lib/visionProvider.js';
+import { getOpenRouterKeys, isGeminiConfigured, isGroqConfigured, isGrokConfigured, isOpenRouterConfigured, resolveVisionProvider } from './lib/visionProvider.js';
 
 const serverLogs = [];
 const originalLog = console.log;
@@ -149,6 +149,12 @@ app.get('/api/health', async (req, res) => {
     gemini: {
       configured: geminiOk,
     },
+    grok: {
+      configured: isGrokConfigured(),
+    },
+    groq: {
+      configured: isGroqConfigured(),
+    },
     activeProvider,
   });
 });
@@ -171,6 +177,8 @@ app.listen(PORT, '0.0.0.0', () => {
   if (lan) console.log(`LAN: http://${lan}:${PORT}`);
 
   const provider = resolveVisionProvider();
+  console.log(`Groq mode: ${isGroqConfigured() ? 'enabled' : 'disabled'}`);
+  console.log(`Grok mode: ${isGrokConfigured() ? 'enabled' : 'disabled'}`);
   console.log(
     `OpenRouter mode: ${isOpenRouterConfigured() ? `enabled (${getOpenRouterKeys().length} key${getOpenRouterKeys().length === 1 ? '' : 's'})` : 'disabled'}`
   );

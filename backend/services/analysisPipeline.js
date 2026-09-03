@@ -3,8 +3,9 @@ import { randomUUID } from 'crypto';
 import { extractMetadata } from './metadataService.js';
 import { analyzeImageVisualsOpenRouter } from './openRouterService.js';
 import { analyzeImageVisuals } from './geminiService.js';
+import { analyzeImageVisualsGroq } from './groqService.js';
 import { analyzeImageVisualsGrok } from './grokService.js';
-import { resolveVisionProvider } from '../lib/visionProvider.js';
+import { resolveVisionProvider, isOpenRouterConfigured } from '../lib/visionProvider.js';
 import { visionLooksIncomplete } from '../lib/findingTypes.js';
 import { calculateExposureScore, calculateSanitizedScore } from './riskScoringService.js';
 import { generateAttackerScenario } from './attackerSimulationService.js';
@@ -85,27 +86,42 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
   const runVision = async (imageBuffer, mode = 'detect') => {
     const provider = resolveVisionProvider();
     console.log(`[analysisPipeline] Routing visual ${mode} to ${provider} provider.`);
-    if (provider === 'openrouter') {
-      const result = await analyzeImageVisualsOpenRouter(imageBuffer, 'image/jpeg', { mode });
-      if (mode === 'verify') return result;
-      if (!visionLooksIncomplete(result)) return result;
-      console.warn('[analysisPipeline] OpenRouter result incomplete (truncated, empty, or faces only). Trying Gemini fallback.');
-      const geminiResult = await analyzeImageVisuals(imageBuffer, 'image/jpeg', { mode });
-      if (!visionLooksIncomplete(geminiResult)) return mergeVision(result, geminiResult);
-      const grokResult = await analyzeImageVisualsGrok(imageBuffer, 'image/jpeg');
-      return mergeVision(result, geminiResult, grokResult);
+
+    if (provider === 'groq') {
+      const groqResult = await analyzeImageVisualsGroq(imageBuffer, 'image/jpeg', { mode });
+      if (mode === 'verify') return groqResult;
+      if (!visionLooksIncomplete(groqResult)) return groqResult;
+      if (!isOpenRouterConfigured()) return groqResult;
+      console.warn('[analysisPipeline] Groq result incomplete or failed. Trying OpenRouter fallback.');
+      const openRouterResult = await analyzeImageVisualsOpenRouter(imageBuffer, 'image/jpeg', { mode });
+      if (!visionLooksIncomplete(openRouterResult)) return mergeVision(groqResult, openRouterResult);
+      return mergeVision(groqResult, openRouterResult);
     }
+
+    if (provider === 'grok') {
+      const grokResult = await analyzeImageVisualsGrok(imageBuffer, 'image/jpeg', { mode });
+      if (mode === 'verify') return grokResult;
+      if (!visionLooksIncomplete(grokResult)) return grokResult;
+      if (!isOpenRouterConfigured()) return grokResult;
+      console.warn('[analysisPipeline] Grok result incomplete or failed. Trying OpenRouter fallback.');
+      const openRouterResult = await analyzeImageVisualsOpenRouter(imageBuffer, 'image/jpeg', { mode });
+      if (!visionLooksIncomplete(openRouterResult)) return mergeVision(grokResult, openRouterResult);
+      return mergeVision(grokResult, openRouterResult);
+    }
+
+    if (provider === 'openrouter') {
+      return analyzeImageVisualsOpenRouter(imageBuffer, 'image/jpeg', { mode });
+    }
+
     if (provider === 'gemini') {
       return analyzeImageVisuals(imageBuffer, 'image/jpeg', { mode });
     }
-    if (provider === 'grok') {
-      return analyzeImageVisualsGrok(imageBuffer, 'image/jpeg');
-    }
+
     console.warn('[analysisPipeline] No visual AI provider configured.');
     return { findings: [], recommendations: [], error: 'No visual AI provider configured.' };
   };
 
-  const [metadata, gemini, qrFindings, barcodeAll] = await Promise.all([
+  const [metadata, visionResult, qrFindings, barcodeAll] = await Promise.all([
     Promise.resolve().then(() => extractMetadata(buffer)),
     withTimeout(runVision(geminiBuffer, 'detect'), 90000, { findings: [], recommendations: [], error: 'Vision timed out.' }, 'vision'),
     Promise.resolve().then(() => {
@@ -129,13 +145,13 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
   let ocrWords = [];
   const onRender = Boolean(process.env.RENDER);
   const allowOcr = process.env.DISABLE_OCR !== '1' && !onRender;
-  if (allowOcr && (!gemini || !gemini.findings || gemini.findings.length === 0)) {
-    console.log('[analysisPipeline] Gemini returned 0 visual findings (or failed). Running local Tesseract OCR...');
+  if (allowOcr && (!visionResult || !visionResult.findings || visionResult.findings.length === 0)) {
+    console.log('[analysisPipeline] Vision returned 0 findings (or failed). Running local Tesseract OCR...');
     ocrWords = await withTimeout(extractOcrWords(canonical), 60000, [], 'ocr');
-  } else if (!gemini?.findings?.length) {
+  } else if (!visionResult?.findings?.length) {
     console.log('[analysisPipeline] Skipping Tesseract OCR to stay within Render memory limits.');
   } else {
-    console.log('[analysisPipeline] Gemini returned findings. Skipping local Tesseract OCR to conserve memory.');
+    console.log('[analysisPipeline] Vision returned findings. Skipping local Tesseract OCR to conserve memory.');
   }
 
   const barcodeFindings = barcodeAll.filter((item) => item.type === 'barcode');
@@ -151,19 +167,19 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
 
   const findings = mergeAndValidateFindings({
     analysisId: id,
-    geminiFindings: gemini.findings || [],
+    geminiFindings: visionResult.findings || [],
     qrFindings: qrMerged,
     barcodeFindings,
     patternFindings,
     imageWidth: pixels.originalWidth,
     imageHeight: pixels.originalHeight,
     screenHint,
-    visionIncomplete: visionLooksIncomplete(gemini),
+    visionIncomplete: visionLooksIncomplete(visionResult),
   });
 
   console.log('[DETECTION]', {
     analysisId: id,
-    gemini: gemini.findings?.length || 0,
+    gemini: visionResult.findings?.length || 0,
     ocr: ocrWords.length,
     qr: qrMerged.length,
     barcodes: barcodeFindings.length,
@@ -173,43 +189,61 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
 
   const visualAnalysis = {
     findings,
-    recommendations: [...(gemini.recommendations || []), ...recommendationsFromFindings(findings)].slice(0, 12),
+    recommendations: [...(visionResult.recommendations || []), ...recommendationsFromFindings(findings)].slice(0, 12),
   };
 
   const beforeScore = calculateExposureScore(metadata, visualAnalysis);
-  const sanitized = await sanitizeVerifiedRegions(canonical, findings, 'image/jpeg');
-  const afterScore = calculateSanitizedScore(metadata, visualAnalysis, findings.map((_, idx) => idx));
   const attackerSimulation = generateAttackerScenario(metadata, visualAnalysis);
+  const sanitized = await sanitizeVerifiedRegions(canonical, findings, 'image/jpeg', findings, {
+    alreadyOriented: true,
+    includeDataUrl: false,
+  });
+  const afterScore = calculateSanitizedScore(metadata, visualAnalysis, findings.map((_, idx) => idx));
 
-  let residualSensitive = [];
-  if (findings.length > 0) {
-    const verifyBuffer = await sharp(sanitized.buffer)
-      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 80 })
-      .toBuffer();
-    const residualVision = await withTimeout(
-      runVision(verifyBuffer, 'verify'),
-      60000,
-      { findings: [], recommendations: [] },
-      'vision-verify'
-    );
-    residualSensitive = (residualVision.findings || []).filter((item) => {
-      const type = String(item.type || '').toLowerCase();
-      return !['face', 'person', 'person_background', 'human_face', 'human'].includes(type);
-    });
-  } else {
-    console.log('[analysisPipeline] Skipping verify pass because detect returned no findings.');
+  const needsVerify = sanitized.validation.protectedRegions > 0;
+  const verifyPromise = needsVerify
+    ? (async () => {
+        const verifyBuffer = await sharp(sanitized.buffer)
+          .resize(768, 768, { fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 75 })
+          .toBuffer();
+        return withTimeout(
+          runVision(verifyBuffer, 'verify'),
+          30000,
+          { findings: [], recommendations: [] },
+          'vision-verify'
+        );
+      })()
+    : Promise.resolve({ findings: [], recommendations: [] });
+
+  const previewPromise = (async () => {
+    const [orientedPreview, safePreview] = await Promise.all([
+      sharp(canonical).resize(1100, 1100, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer(),
+      sharp(sanitized.buffer).resize(720, 720, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer(),
+    ]);
+    return {
+      orientedPreview: `data:image/jpeg;base64,${orientedPreview.toString('base64')}`,
+      safeImage: `data:image/jpeg;base64,${safePreview.toString('base64')}`,
+    };
+  })();
+
+  if (!needsVerify) {
+    console.log('[analysisPipeline] Skipping verify pass because no regions were protected.');
   }
+
+  const [residualVision, previews] = await Promise.all([verifyPromise, previewPromise]);
+  const residualSensitive = needsVerify
+    ? (residualVision.findings || []).filter((item) => {
+        const type = String(item.type || '').toLowerCase();
+        return !['face', 'person', 'person_background', 'human_face', 'human'].includes(type);
+      })
+    : [];
   const validation = {
     ...sanitized.validation,
-    visualResidual: findings.length === 0
-      ? (gemini.error ? 'SKIPPED' : 'PASS')
+    visualResidual: !needsVerify
+      ? (visionResult.error ? 'SKIPPED' : 'PASS')
       : residualSensitive.length === 0 ? 'PASS' : 'FAIL',
   };
-
-  const orientedPreview = `data:image/jpeg;base64,${(
-    await sharp(canonical).resize(1100, 1100, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer()
-  ).toString('base64')}`;
 
   findings.forEach((finding, idx) => {
     console.log('[SANITIZATION]', {
@@ -231,12 +265,12 @@ export async function runPrivacyAnalysis({ buffer, mimeType, filename, analysisI
     findings,
     exposureScore: beforeScore.scores,
     sanitizedScore: afterScore.scores,
-    safeImage: sanitized.dataUrl,
+    safeImage: previews.safeImage,
     safeBuffer: sanitized.buffer,
     safeMimeType: 'image/jpeg',
-    orientedPreview,
+    orientedPreview: previews.orientedPreview,
     validation,
     attackerSimulation,
-    visionError: gemini.error || null,
+    visionError: visionResult.error || null,
   };
 }

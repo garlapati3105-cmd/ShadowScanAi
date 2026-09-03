@@ -27,9 +27,9 @@ Vision AI **cannot read hidden GPS**. Those live in file headers.
 | Job | Engine |
 | --- | --- |
 | Hidden GPS, device, timestamp, camera settings | `ExifReader` (code) |
-| Visible leaks, overlays, leftover readable text | OpenRouter (`google/gemini-2.5-flash`) |
+| Visible leaks, overlays, leftover readable text | **Groq** (primary) → **OpenRouter** (fallback) |
 | QR / barcodes | Local detectors |
-| Tiny text if vision returns nothing | Tesseract OCR |
+| Tiny text if vision returns nothing | Tesseract OCR (local dev only) |
 | Blur / keep faces clear | Sharp + box geometry |
 | Exposure score 0–100 | Deterministic scoring |
 
@@ -37,11 +37,26 @@ Vision AI **cannot read hidden GPS**. Those live in file headers.
 
 ---
 
+## Vision providers
+
+Default order when multiple keys are set:
+
+1. **Groq** (`GROQ_API_KEY`, starts with `gsk_`) — free tier friendly, vision via `qwen/qwen3.6-27b`
+2. **xAI Grok** (`XAI_API_KEY`, starts with `xai-`) — optional primary if Groq is unset
+3. **OpenRouter** (`OPENROUTER_API_KEY`) — fallback when the primary provider fails or returns incomplete results
+4. **Gemini** (`GEMINI_API_KEY`, starts with `AIza`) — legacy; only used if you set `VISION_PROVIDER=gemini`
+
+> **Groq vs Grok:** they are different services. A `gsk_` key is **Groq** ([console.groq.com](https://console.groq.com)). An `xai-` key is **xAI Grok** ([console.x.ai](https://console.x.ai)).
+
+Force a provider with `VISION_PROVIDER=groq|grok|openrouter|gemini`.
+
+---
+
 ## Stack
 
 - **Frontend:** React, Vite, Tailwind — typically **Vercel**
 - **Backend:** Node, Express — typically **Render**
-- **Vision:** OpenRouter (preferred). Gemini if OpenRouter is unset. Optional Grok.
+- **Vision:** Groq (primary) → OpenRouter (fallback). Optional xAI Grok or Gemini.
 
 ---
 
@@ -61,19 +76,24 @@ Edit `backend/.env`:
 
 ```env
 PORT=5000
-OPENROUTER_API_KEY=your_openrouter_key
+
+# Primary (free tier) — https://console.groq.com/
+GROQ_API_KEY=gsk_your_groq_key
+GROQ_MODEL=qwen/qwen3.6-27b
+
+# Fallback — https://openrouter.ai/
+OPENROUTER_API_KEY=sk-or-v1-your_openrouter_key
 OPENROUTER_MODEL=google/gemini-2.5-flash
+
 ALLOWED_ORIGINS=http://localhost:5173
 ```
-
-Local-only alternative: set `GEMINI_API_KEY` instead of OpenRouter.
 
 ```bash
 npm run dev
 ```
 
 API: `http://localhost:5000`  
-Health: `http://localhost:5000/api/health`
+Health: `http://localhost:5000/api/health` — check `activeProvider`, `groq.configured`, `openrouter.configured`
 
 ### Frontend
 
@@ -107,7 +127,7 @@ App: `http://localhost:5173`
 
 Redeploy after changing this. It is baked in at **build** time.
 
-Do **not** put OpenRouter or Gemini keys on Vercel.
+Do **not** put Groq, OpenRouter, or other vision keys on Vercel — backend only.
 
 ### Backend (Render)
 
@@ -115,9 +135,19 @@ Do **not** put OpenRouter or Gemini keys on Vercel.
 | --- | --- |
 | Root / build | `backend` folder · `npm install` |
 | Start | `node index.js` |
-| `OPENROUTER_API_KEY` | Your key (production) |
+| `GROQ_API_KEY` | Your Groq key (`gsk_...`) |
+| `GROQ_MODEL` | `qwen/qwen3.6-27b` |
+| `OPENROUTER_API_KEY` | OpenRouter fallback key |
 | `OPENROUTER_MODEL` | `google/gemini-2.5-flash` |
-| `ALLOWED_ORIGINS` | Your Vercel origin, no trailing slash, e.g. `https://your-app.vercel.app` |
+| `ALLOWED_ORIGINS` | Your Vercel origin, no trailing slash, e.g. `https://shadow-scan-ai.vercel.app` |
+
+Optional:
+
+| Variable | When to use |
+| --- | --- |
+| `XAI_API_KEY` | Use xAI Grok as primary instead of Groq (`xai-...`) |
+| `GEMINI_API_KEY` | Legacy Google Gemini (`AIza...`) with `VISION_PROVIDER=gemini` |
+| `VISION_PROVIDER` | Force `groq`, `grok`, `openrouter`, or `gemini` |
 
 ---
 
@@ -138,7 +168,7 @@ Do **not** put OpenRouter or Gemini keys on Vercel.
 backend/           Express API, pipeline, vision prompts
   lib/            Boxes, CORS/vision helpers, in-memory safe-image store
   routes/         /scan, /sanitize
-  services/       metadata, OpenRouter, OCR, sanitize, scoring
+  services/       metadata, Groq, Grok, OpenRouter, OCR, sanitize, scoring
 frontend/         Vite React app
 ```
 
@@ -150,6 +180,7 @@ frontend/         Vite React app
 - Models can miss things. Verify still matters for humans.
 - Faces are detected, not blurred, by design.
 - Safe images are held briefly in RAM (limited slots). Restarting the server clears downloads.
+- Never commit real API keys. Use `.env` locally and platform env vars in production.
 
 ---
 

@@ -2,7 +2,7 @@ import { VisualAnalysisSchema } from '../validation/schema.js';
 import { toTopLeftPercent } from '../lib/boxes.js';
 import { parseModelJson } from '../lib/visionJson.js';
 import { SYSTEM_PROMPT, visionUserPrompt } from '../lib/visionPrompts.js';
-import { getGrokKeys } from '../lib/visionProvider.js';
+import { getGroqKeys } from '../lib/visionProvider.js';
 
 const EMPTY = { findings: [], recommendations: [] };
 
@@ -55,21 +55,21 @@ function normalizeVisualAnalysis(parsedData) {
   });
 }
 
-export async function analyzeImageVisualsGrok(buffer, mimeType, { mode = 'detect' } = {}) {
-  const apiKeys = getGrokKeys();
+export async function analyzeImageVisualsGroq(buffer, mimeType, { mode = 'detect' } = {}) {
+  const apiKeys = getGroqKeys();
   if (apiKeys.length === 0) {
-    return { ...EMPTY, error: 'Grok is not configured. Set XAI_API_KEY from https://console.x.ai/' };
+    return { ...EMPTY, error: 'Groq is not configured. Set GROQ_API_KEY from https://console.groq.com/' };
   }
 
-  const model = String(process.env.GROK_MODEL || process.env.XAI_MODEL || 'grok-2-vision-latest').trim();
+  const model = String(process.env.GROQ_MODEL || 'qwen/qwen3.6-27b').trim();
   const dataUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
   let lastError = null;
 
   for (let i = 0; i < apiKeys.length; i += 1) {
     const apiKey = apiKeys[i];
     try {
-      console.log(`[GrokService] Routing visual ${mode} to xAI model ${model} (key ${i + 1}/${apiKeys.length})...`);
-      const response = await fetch('https://api.x.ai/v1/chat/completions', {
+      console.log(`[GroqService] Routing visual ${mode} to Groq model ${model} (key ${i + 1}/${apiKeys.length})...`);
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -93,7 +93,6 @@ export async function analyzeImageVisualsGrok(buffer, mimeType, { mode = 'detect
                   type: 'image_url',
                   image_url: {
                     url: dataUrl,
-                    detail: mode === 'verify' ? 'low' : 'high',
                   },
                 },
               ],
@@ -106,8 +105,8 @@ export async function analyzeImageVisualsGrok(buffer, mimeType, { mode = 'detect
 
       if (!response.ok) {
         const errText = await response.text();
-        console.error(`[GrokService] xAI API HTTP ${response.status}:`, errText.slice(0, 500));
-        lastError = new Error(`xAI API HTTP ${response.status}: ${errText.slice(0, 200)}`);
+        console.error(`[GroqService] HTTP ${response.status}:`, errText.slice(0, 500));
+        lastError = new Error(`Groq API HTTP ${response.status}: ${errText.slice(0, 200)}`);
         if ([401, 402, 403, 429].includes(response.status)) continue;
         return { ...EMPTY, error: lastError.message };
       }
@@ -115,7 +114,7 @@ export async function analyzeImageVisualsGrok(buffer, mimeType, { mode = 'detect
       const data = await response.json();
       const messageContent = data.choices?.[0]?.message?.content;
       if (!messageContent) {
-        lastError = new Error('Grok returned an empty response.');
+        lastError = new Error('Groq returned an empty response.');
         continue;
       }
 
@@ -123,10 +122,10 @@ export async function analyzeImageVisualsGrok(buffer, mimeType, { mode = 'detect
       return { ...normalizeVisualAnalysis(parsed), truncated: Boolean(parsed.truncated) };
     } catch (err) {
       lastError = err;
-      console.error(`[GrokService] Key ${i + 1} failed:`, err.message);
+      console.error(`[GroqService] Key ${i + 1} failed:`, err.message);
     }
   }
 
-  console.error('[GrokService] All Grok keys failed. Last error:', lastError?.message);
-  return { ...EMPTY, error: lastError?.message || 'Grok visual analysis failed.' };
+  console.error('[GroqService] All Groq keys failed. Last error:', lastError?.message);
+  return { ...EMPTY, error: lastError?.message || 'Groq visual analysis failed.' };
 }

@@ -3,6 +3,7 @@ import { VisualAnalysisSchema } from '../validation/schema.js';
 import { toTopLeftPercent } from '../lib/boxes.js';
 import { SYSTEM_PROMPT, visionUserPrompt } from '../lib/visionPrompts.js';
 import { parseModelJson } from '../lib/visionJson.js';
+import { getGeminiKeys } from '../lib/visionProvider.js';
 
 const EMPTY = { findings: [], recommendations: [] };
 
@@ -55,7 +56,7 @@ function normalizeVisualAnalysis(parsedData) {
   });
 }
 
-async function generateWithRetry(model, payload, attempts = 2) {
+async function generateWithRetry(model, payload, attempts = 3) {
   let lastErr;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
@@ -66,7 +67,7 @@ async function generateWithRetry(model, payload, attempts = 2) {
       if (!/503|429|high demand|unavailable|overloaded|try again/i.test(msg) || attempt === attempts) {
         throw err;
       }
-      await new Promise((resolve) => setTimeout(resolve, 700 * attempt));
+      await new Promise((resolve) => setTimeout(resolve, 900 * attempt));
     }
   }
   throw lastErr;
@@ -78,20 +79,19 @@ function geminiModelCandidates() {
   const preferred = String(process.env.GEMINI_MODEL || '').trim();
   return [...new Set([
     preferred,
-    'gemini-3.6-flash',
+    'gemini-2.0-flash-lite',
     'gemini-2.0-flash',
-    'gemini-flash-latest',
-    'gemini-2.5-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-8b',
   ].filter(Boolean))];
 }
 
 export async function analyzeImageVisuals(buffer, mimeType, { mode = 'detect' } = {}) {
-  const apiKeysRaw = process.env.GEMINI_API_KEY || '';
-  const apiKeys = apiKeysRaw.split(',').map(k => k.trim()).filter(k => k && k !== 'YOUR_GEMINI_API_KEY');
+  const apiKeys = getGeminiKeys();
 
   if (apiKeys.length === 0) {
-    console.warn('[GeminiService] No Gemini API keys configured.');
-    return { ...EMPTY, error: 'Gemini is not configured.' };
+    console.warn('[GeminiService] No valid Gemini API keys configured (expected AIza... keys from Google AI Studio).');
+    return { ...EMPTY, error: 'Gemini is not configured. Add a free API key from https://aistudio.google.com/apikey' };
   }
 
   const models = geminiModelCandidates();

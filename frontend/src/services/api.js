@@ -15,6 +15,11 @@ const apiClient = axios.create({
   timeout: 180_000,
 });
 
+export function buildSafeImageUrl(analysisId) {
+  if (!analysisId) return null;
+  return `${resolveApiBase()}/analysis/${encodeURIComponent(analysisId)}/safe-image`;
+}
+
 export async function uploadImage(file, { onProgress, analysisId, signal } = {}) {
   const formData = new FormData();
   formData.append('image', file);

@@ -293,7 +293,7 @@ export default function App() {
                 {scanResult.visionError && findings.length === 0 && (
                   <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm leading-relaxed text-amber-100">
                     Visual AI could not finish this scan, so the exposure score is not a real all-clear.
-                    Add OpenRouter credits or a working Gemini model, then scan again.
+                    Check your Grok (XAI_API_KEY) and OpenRouter keys on the backend, then scan again.
                   </div>
                 )}
                 <ExposureScorePanel
