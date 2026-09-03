@@ -55,77 +55,95 @@ function normalizeVisualAnalysis(parsedData) {
   });
 }
 
+async function callGroq(apiKey, model, dataUrl, mode, { jsonMode = true } = {}) {
+  const body = {
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPT,
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: visionUserPrompt(mode),
+          },
+          {
+            type: 'image_url',
+            image_url: { url: dataUrl },
+          },
+        ],
+      },
+    ],
+    temperature: 0.1,
+    max_tokens: mode === 'verify' ? 768 : 2048,
+  };
+  if (jsonMode) body.response_format = { type: 'json_object' };
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const errText = response.ok ? '' : await response.text();
+  return { response, errText };
+}
+
 export async function analyzeImageVisualsGroq(buffer, mimeType, { mode = 'detect' } = {}) {
   const apiKeys = getGroqKeys();
   if (apiKeys.length === 0) {
     return { ...EMPTY, error: 'Groq is not configured. Set GROQ_API_KEY from https://console.groq.com/' };
   }
 
-  const model = String(process.env.GROQ_MODEL || 'qwen/qwen3.6-27b').trim();
+  const preferred = String(process.env.GROQ_MODEL || 'qwen/qwen3.6-27b').trim();
+  const models = [...new Set([preferred, 'qwen/qwen3.6-27b', 'qwen/qwen3.8-27b'].filter(Boolean))];
   const dataUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
   let lastError = null;
 
   for (let i = 0; i < apiKeys.length; i += 1) {
     const apiKey = apiKeys[i];
-    try {
-      console.log(`[GroqService] Routing visual ${mode} to Groq model ${model} (key ${i + 1}/${apiKeys.length})...`);
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: 'system',
-              content: SYSTEM_PROMPT,
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: visionUserPrompt(mode),
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: dataUrl,
-                  },
-                },
-              ],
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.1,
-        }),
-      });
+    for (const model of models) {
+      for (const jsonMode of [true, false]) {
+        try {
+          console.log(
+            `[GroqService] Routing visual ${mode} to ${model} (key ${i + 1}/${apiKeys.length}, jsonMode=${jsonMode})...`
+          );
+          const { response, errText } = await callGroq(apiKey, model, dataUrl, mode, { jsonMode });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error(`[GroqService] HTTP ${response.status}:`, errText.slice(0, 500));
-        lastError = new Error(`Groq API HTTP ${response.status}: ${errText.slice(0, 200)}`);
-        if ([401, 402, 403, 429].includes(response.status)) continue;
-        return { ...EMPTY, error: lastError.message };
+          if (!response.ok) {
+            console.error(`[GroqService] HTTP ${response.status}:`, errText.slice(0, 500));
+            lastError = new Error(`Groq API HTTP ${response.status}: ${errText.slice(0, 200)}`);
+            const retryWithoutJson =
+              response.status === 400 && /json_validate_failed|invalid_request_error/i.test(errText);
+            if (retryWithoutJson && jsonMode) continue;
+            if ([401, 402, 403, 429].includes(response.status)) break;
+            continue;
+          }
+
+          const data = await response.json();
+          const messageContent = data.choices?.[0]?.message?.content;
+          if (!messageContent) {
+            lastError = new Error('Groq returned an empty response.');
+            continue;
+          }
+
+          const parsed = parseModelJson(messageContent);
+          return { ...normalizeVisualAnalysis(parsed), truncated: Boolean(parsed.truncated) };
+        } catch (err) {
+          lastError = err;
+          console.error(`[GroqService] ${model} failed:`, err.message);
+          if (jsonMode) continue;
+        }
       }
-
-      const data = await response.json();
-      const messageContent = data.choices?.[0]?.message?.content;
-      if (!messageContent) {
-        lastError = new Error('Groq returned an empty response.');
-        continue;
-      }
-
-      const parsed = parseModelJson(messageContent);
-      return { ...normalizeVisualAnalysis(parsed), truncated: Boolean(parsed.truncated) };
-    } catch (err) {
-      lastError = err;
-      console.error(`[GroqService] Key ${i + 1} failed:`, err.message);
     }
   }
 
-  console.error('[GroqService] All Groq keys failed. Last error:', lastError?.message);
+  console.error('[GroqService] All Groq attempts failed. Last error:', lastError?.message);
   return { ...EMPTY, error: lastError?.message || 'Groq visual analysis failed.' };
 }
