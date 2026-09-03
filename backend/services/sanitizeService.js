@@ -111,10 +111,24 @@ function protectionFor(type) {
   if (type === 'qr_code' || type === 'barcode') {
     return { factor: 6, sigma: 42 };
   }
-  if (['private_chat', 'otp', 'credentials', 'api_key', 'password', 'aadhaar', 'signature'].includes(type)) {
-    return { factor: 5, sigma: 48 };
+  if (['private_chat', 'screen', 'sensitive_screen', 'otp', 'credentials', 'api_key', 'password', 'aadhaar', 'signature'].includes(type)) {
+    return { factor: 4, sigma: 52 };
   }
   return { factor: 7, sigma: 40 };
+}
+
+function shouldSkipFaceCutout(type) {
+  return ['private_chat', 'screen', 'sensitive_screen'].includes(type);
+}
+
+function padBoxForType(box, type) {
+  if (!shouldSkipFaceCutout(type)) return box;
+  const pad = type === 'screen' ? 10 : 8;
+  const x = Math.max(0, box.x - pad / 2);
+  const y = Math.max(0, box.y - pad / 2);
+  const width = Math.min(100 - x, box.width + pad);
+  const height = Math.min(100 - y, box.height + pad);
+  return { x, y, width, height };
 }
 
 async function buildProtectedPatch(imageBuffer, region, type) {
@@ -216,8 +230,10 @@ export async function sanitizeVerifiedRegions(
   for (const finding of findings) {
     if (!shouldBlurFinding(finding)) continue;
     const type = normalizeFindingType(finding.type);
-
-    const clippedBoxes = subtractFaceBoxes(finding.box, faceBoxes);
+    const paddedBox = padBoxForType(finding.box, type);
+    const clippedBoxes = shouldSkipFaceCutout(type)
+      ? [paddedBox]
+      : subtractFaceBoxes(paddedBox, faceBoxes);
 
     for (const clBox of clippedBoxes) {
       const region = regionFromBox(clBox, width, height);

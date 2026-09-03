@@ -70,6 +70,42 @@ function clampBox(box) {
   return { x, y, width, height };
 }
 
+export function expandBox(box, padPct = 8) {
+  if (!box) return box;
+  const pad = padPct / 2;
+  return clampBox({
+    x: box.x - pad,
+    y: box.y - pad,
+    width: box.width + pad,
+    height: box.height + pad,
+  });
+}
+
+export function unionBoxes(boxes = []) {
+  const valid = boxes.filter((b) => b && Number.isFinite(b.x));
+  if (!valid.length) return null;
+  if (valid.length === 1) return clampBox(valid[0]);
+  let x1 = Infinity;
+  let y1 = Infinity;
+  let x2 = -Infinity;
+  let y2 = -Infinity;
+  for (const b of valid) {
+    x1 = Math.min(x1, b.x);
+    y1 = Math.min(y1, b.y);
+    x2 = Math.max(x2, b.x + b.width);
+    y2 = Math.max(y2, b.y + b.height);
+  }
+  return clampBox({ x: x1, y: y1, width: x2 - x1, height: y2 - y1 });
+}
+
+export function boxCenterDistance(a, b) {
+  const ax = a.x + a.width / 2;
+  const ay = a.y + a.height / 2;
+  const bx = b.x + b.width / 2;
+  const by = b.y + b.height / 2;
+  return Math.hypot(ax - bx, ay - by);
+}
+
 export function looksLikeFaceCover(box) {
   if (!box) return false;
   const cx = box.x + box.width / 2;
@@ -98,7 +134,7 @@ export function snapSensitiveBox(box, screenHint = null) {
 
       // Only snap if they overlap significantly or the screenHint is mostly inside the vision box and close
       if (iou > 0.35 || (intersection / (screenHint.width * screenHint.height) > 0.7 && dist < 16)) {
-        return clampBox(screenHint);
+        return expandBox(clampBox(screenHint), 10);
       }
     }
   }

@@ -1,5 +1,5 @@
 import { normalizeFindingType } from '../lib/findingTypes.js';
-import { toTopLeftPercent, snapSensitiveBox, looksLikeFaceCover } from '../lib/boxes.js';
+import { toTopLeftPercent, snapSensitiveBox, looksLikeFaceCover, expandBox, unionBoxes, boxCenterDistance } from '../lib/boxes.js';
 
 const REJECT_TYPES = new Set([
   'hand',
@@ -63,6 +63,57 @@ function iou(a, b) {
 
 function boxArea(box) {
   return (box?.width || 0) * (box?.height || 0);
+}
+
+const SCREEN_CLUSTER_TYPES = new Set([
+  'private_chat',
+  'screen',
+  'sensitive_screen',
+  'email',
+  'credentials',
+  'otp',
+  'password',
+  'api_key',
+  'sensitive_document',
+]);
+
+function mergeScreenClusters(findings) {
+  const screenRelated = findings.filter((item) => SCREEN_CLUSTER_TYPES.has(item.type));
+  const other = findings.filter((item) => !SCREEN_CLUSTER_TYPES.has(item.type));
+  if (screenRelated.length <= 1) return findings;
+
+  const clusters = [];
+  for (const item of screenRelated) {
+    let placed = false;
+    for (const cluster of clusters) {
+      const near = cluster.some(
+        (peer) => iou(peer.box, item.box) > 0.06 || boxCenterDistance(peer.box, item.box) < 22
+      );
+      if (near) {
+        cluster.push(item);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) clusters.push([item]);
+  }
+
+  const mergedScreen = clusters.map((cluster) => {
+    const union = unionBoxes(cluster.map((item) => item.box));
+    const box = expandBox(union, 12);
+    const best = [...cluster].sort((a, b) => (b.confidence || 0) - (a.confidence || 0))[0];
+    return {
+      ...best,
+      type: 'private_chat',
+      label: cluster.length > 1 ? 'Device screen content' : best.label,
+      box,
+      boundingBox: box,
+      description: 'Readable content on a device display in this photo.',
+      reason: 'On-screen text can be copied if this image is shared without protection.',
+    };
+  });
+
+  return [...other, ...mergedScreen];
 }
 
 function toFinding(raw, analysisId, extras = {}) {
@@ -195,17 +246,9 @@ export function mergeAndValidateFindings({
     return !chats.some((chat) => iou(item.box, chat.box) > 0.25);
   });
 
-  const oneChat = [];
-  let keptChat = false;
-  for (const item of withoutNestedIds) {
-    if (item.type === 'private_chat') {
-      if (keptChat) continue;
-      keptChat = true;
-    }
-    oneChat.push(item);
-  }
+  const mergedScreens = mergeScreenClusters(withoutNestedIds);
 
-  const hasScreenContent = oneChat.some((item) =>
+  const hasScreenContent = mergedScreens.some((item) =>
     ['private_chat', 'screen', 'email', 'credentials', 'otp'].includes(item.type)
   );
   const visionBlob = geminiFindings
@@ -221,7 +264,7 @@ export function mergeAndValidateFindings({
       visionSawDevice,
       visionIncomplete,
     });
-    oneChat.push(
+    mergedScreens.push(
       toFinding(
         {
           type: 'private_chat',
@@ -231,7 +274,7 @@ export function mergeAndValidateFindings({
           evidence: 'Localized from this image',
           reason: 'On-screen text in this photo can be copied if it is shared.',
           potentialInference: 'An observer could read data from the display in this image.',
-          box: screenHint,
+          box: expandBox(screenHint, 12),
           confidence: 0.78,
         },
         analysisId,
@@ -240,7 +283,7 @@ export function mergeAndValidateFindings({
     );
   }
 
-  return oneChat.slice(0, 40).map((item, index) => {
+  return mergedScreens.slice(0, 40).map((item, index) => {
     const id = `finding-${String(index + 1).padStart(3, '0')}`;
     return { ...item, id, boundingBox: item.box };
   });

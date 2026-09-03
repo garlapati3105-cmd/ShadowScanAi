@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload,
@@ -6,6 +6,8 @@ import {
   CheckCircle,
   AlertTriangle,
   Loader2,
+  Lightbulb,
+  Clock3,
 } from 'lucide-react';
 import { uploadImage } from '../services/api.js';
 
@@ -13,6 +15,42 @@ const ACCEPTED_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
 const ACCEPTED_EXTENSIONS = ['.jpg', '.jpeg', '.png'];
 const MAX_SIZE_MB = 20;
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+
+const LOADING_STEPS = [
+  'Lifting hidden EXIF ghosts',
+  'Sweeping QR and barcodes',
+  'Reading the visible scene',
+  'Mapping identity leaks',
+  'Staging the safe copy',
+];
+
+const WAITING_MESSAGES = [
+  'Cross-checking blurred regions…',
+  'Teaching the AI to respect face boundaries…',
+  'Double-reading chat bubbles and screens…',
+  'Scoring exposure before you share…',
+  'Almost there — polishing the safe copy…',
+];
+
+const PRIVACY_TIPS = [
+  'WhatsApp and Instagram often strip GPS from photos — but visible text and screens still leak.',
+  'A QR code in the background can reveal a payment link or contact you never meant to share.',
+  'EXIF can hide camera model and capture time even when GPS was turned off.',
+  'Blurring faces is optional here by design — we focus on documents, chats, and codes.',
+  'Screenshots of chats are the #1 accidental leak in group photos.',
+  'Student IDs and lanyards in the frame can expose school name and roll numbers.',
+  'Reflections in glasses or windows sometimes show another screen entirely.',
+  'Your safe copy is built in memory and never saved to our servers.',
+  'A second vision pass checks whether anything sensitive is still readable after blur.',
+  'Sharing the original? Check for whiteboards, calendars, and sticky notes too.',
+];
+
+function formatWaitTime(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return secs ? `${mins}m ${secs}s` : `${mins}m`;
+}
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -46,26 +84,66 @@ export default function UploadZone({ onAnalysisStart, onResult, onAnalysisError 
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [activeStep, setActiveStep] = useState(0);
-
-  const loadingSteps = [
-    'Lifting hidden EXIF ghosts',
-    'Sweeping QR and barcodes',
-    'Reading the visible scene',
-    'Mapping identity leaks',
-    'Staging the safe copy',
-  ];
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [tipIndex, setTipIndex] = useState(0);
+  const [waitMsgIndex, setWaitMsgIndex] = useState(0);
 
   React.useEffect(() => {
     let interval;
     if (uiState === 'uploading') {
       interval = setInterval(() => {
-        setActiveStep((prev) => (prev < 4 ? prev + 1 : prev));
-      }, 1400);
+        setActiveStep((prev) => (prev < LOADING_STEPS.length - 1 ? prev + 1 : prev));
+      }, 2200);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
   }, [uiState]);
+
+  React.useEffect(() => {
+    let timer;
+    if (uiState === 'uploading') {
+      timer = setInterval(() => setElapsedSec((s) => s + 1), 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [uiState]);
+
+  React.useEffect(() => {
+    let tipTimer;
+    if (uiState === 'uploading') {
+      tipTimer = setInterval(() => {
+        setTipIndex((i) => (i + 1) % PRIVACY_TIPS.length);
+      }, 4500);
+    }
+    return () => {
+      if (tipTimer) clearInterval(tipTimer);
+    };
+  }, [uiState]);
+
+  React.useEffect(() => {
+    let waitTimer;
+    if (uiState === 'uploading' && activeStep >= LOADING_STEPS.length - 1) {
+      waitTimer = setInterval(() => {
+        setWaitMsgIndex((i) => (i + 1) % WAITING_MESSAGES.length);
+      }, 3200);
+    }
+    return () => {
+      if (waitTimer) clearInterval(waitTimer);
+    };
+  }, [uiState, activeStep]);
+
+  const displayProgress = useMemo(() => {
+    const stepPart = ((activeStep + 1) / LOADING_STEPS.length) * 68;
+    const timePart = Math.min(27, elapsedSec * 0.55);
+    return Math.min(96, Math.round(stepPart + timePart));
+  }, [activeStep, elapsedSec]);
+
+  const statusLine =
+    activeStep >= LOADING_STEPS.length - 1 && elapsedSec > 6
+      ? WAITING_MESSAGES[waitMsgIndex]
+      : LOADING_STEPS[activeStep];
 
   const beginIndependentAnalysis = useCallback(
     async (selected, previewUrl) => {
@@ -78,6 +156,9 @@ export default function UploadZone({ onAnalysisStart, onResult, onAnalysisError 
       setResult(null);
       setErrorMsg('');
       setActiveStep(0);
+      setElapsedSec(0);
+      setTipIndex(0);
+      setWaitMsgIndex(0);
       setUiState('uploading');
 
       if (onAnalysisStart) {
@@ -254,25 +335,79 @@ export default function UploadZone({ onAnalysisStart, onResult, onAnalysisError 
                 <span className="ss-live-dot !bg-rose-400" />
                 Live inspection
               </div>
-              <div className="absolute right-4 top-4 z-10 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">
-                {String(activeStep + 1).padStart(2, '0')} / 05
+              <div className="absolute right-4 top-4 z-10 flex flex-col items-end gap-1.5">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-zinc-950/80 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">
+                  <Clock3 className="h-3 w-3" />
+                  {formatWaitTime(elapsedSec)}
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                  {String(activeStep + 1).padStart(2, '0')} / {String(LOADING_STEPS.length).padStart(2, '0')}
+                </span>
               </div>
 
               <div className="absolute inset-x-0 bottom-0 z-10 px-5 pb-5 pt-16">
-                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-rose-300/90">Now hunting</p>
-                <p className="ss-display mt-1 text-3xl text-white sm:text-4xl">{loadingSteps[activeStep]}</p>
-                <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/10">
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-rose-300/90">
+                  {activeStep >= LOADING_STEPS.length - 1 && elapsedSec > 8 ? 'Still working' : 'Now hunting'}
+                </p>
+                <AnimatePresence mode="wait">
+                  <motion.p
+                    key={statusLine}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.35 }}
+                    className="ss-display mt-1 text-2xl text-white sm:text-4xl"
+                  >
+                    {statusLine}
+                  </motion.p>
+                </AnimatePresence>
+                {elapsedSec > 12 && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="mt-2 text-xs text-zinc-400"
+                  >
+                    Detailed photos take longer — vision AI is reading every corner of your frame.
+                  </motion.p>
+                )}
+                <div className="relative mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
                   <motion.div
-                    className="h-full bg-rose-400"
+                    className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-rose-500 to-rose-300"
                     initial={false}
-                    animate={{ width: `${((activeStep + 1) / loadingSteps.length) * 100}%` }}
-                    transition={{ duration: 0.45 }}
+                    animate={{ width: `${displayProgress}%` }}
+                    transition={{ duration: 0.6, ease: 'easeOut' }}
+                  />
+                  <motion.div
+                    className="absolute inset-y-0 w-1/4 rounded-full bg-white/35"
+                    animate={{ x: ['-100%', '400%'] }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
                   />
                 </div>
+                <p className="mt-2 font-mono text-[10px] text-zinc-500">{displayProgress}% analyzed</p>
               </div>
             </div>
 
-            <div className="space-y-4 bg-zinc-950/70 px-5 py-5 sm:px-7">
+            <div className="border-t border-white/6 bg-zinc-950/70 px-5 py-4 sm:px-7">
+              <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3">
+                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                <div className="min-w-0">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-amber-200/90">While you wait</p>
+                  <AnimatePresence mode="wait">
+                    <motion.p
+                      key={tipIndex}
+                      initial={{ opacity: 0, x: 6 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -6 }}
+                      transition={{ duration: 0.3 }}
+                      className="mt-1 text-sm leading-relaxed text-amber-50/90"
+                    >
+                      {PRIVACY_TIPS[tipIndex]}
+                    </motion.p>
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">Pipeline</p>
                 <label className="inline-flex cursor-pointer items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-200">
@@ -280,7 +415,7 @@ export default function UploadZone({ onAnalysisStart, onResult, onAnalysisError 
                   Swap frame
                 </label>
               </div>
-              {loadingSteps.map((step, idx) => {
+              {LOADING_STEPS.map((step, idx) => {
                 const isCompleted = idx < activeStep;
                 const isActive = idx === activeStep;
                 return (
@@ -308,6 +443,7 @@ export default function UploadZone({ onAnalysisStart, onResult, onAnalysisError 
                   </div>
                 );
               })}
+              </div>
             </div>
           </motion.div>
         )}
